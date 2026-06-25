@@ -4,64 +4,59 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
-    --radius: 0.625rem;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
-
-  .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
+    --background: 222 30% 7%;
+    --foreground: 210 20% 96%;
+    --card: 222 25% 10%;
+    --card-foreground: 210 20% 96%;
+    --popover: 222 25% 10%;
+    --popover-foreground: 210 20% 96%;
+    --primary: 210 100% 52%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 222 20% 16%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 222 20% 16%;
+    --muted-foreground: 215 15% 55%;
+    --accent: 38 95% 50%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 222 20% 18%;
+    --input: 222 20% 18%;
+    --ring: 210 100% 52%;
+    --radius: 0.75rem;
+    --success: 142 76% 42%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --info: 210 100% 52%;
+    --info-foreground: 0 0% 100%;
+    --emergency: 0 84% 50%;
+    --emergency-foreground: 0 0% 100%;
+    --champagne: 38 60% 55%;
+    --champagne-foreground: 0 0% 100%;
+    --champagne-muted: 38 30% 30%;
+    --elite-green: 142 76% 42%;
+    --elite-green-foreground: 0 0% 100%;
+    --sidebar-background: 222 30% 5%;
+    --sidebar-foreground: 210 20% 90%;
+    --sidebar-primary: 210 100% 52%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-accent: 222 20% 14%;
+    --sidebar-accent-foreground: 210 20% 96%;
+    --sidebar-border: 222 20% 16%;
+    --sidebar-ring: 210 100% 52%;
+    --chart-1: 210 100% 52%;
+    --chart-2: 142 76% 42%;
+    --chart-3: 38 95% 50%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 0 84% 50%;
+    --gradient-primary: linear-gradient(135deg, hsl(210 100% 52%), hsl(210 100% 40%));
+    --gradient-card: linear-gradient(180deg, hsl(222 25% 12%), hsl(222 25% 8%));
+    --gradient-background: linear-gradient(180deg, hsl(222 30% 7%), hsl(222 30% 5%));
+    --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.3);
+    --shadow-hover: 0 8px 40px rgba(0, 0, 0, 0.4);
+    --education-blue: 210 100% 52%;
+    --education-green: 142 76% 42%;
   }
 }
 
@@ -70,6 +65,170 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-xl border border-border/50 rounded-xl;
+  }
+  
+  .glass-card-hover {
+    @apply glass-card transition-all duration-300 hover:border-primary/30 hover:-translate-y-0.5;
+    box-shadow: var(--shadow-card);
+  }
+  .glass-card-hover:hover {
+    box-shadow: var(--shadow-hover);
+  }
+  
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent;
+  }
+  
+  .gradient-text-alt {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-accent to-primary;
+  }
+  
+  .sparekei-btn {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium transition-all duration-300;
+    @apply bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/25 active:scale-[0.98];
+  }
+  
+  .sparekei-btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium transition-all duration-300;
+    @apply bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border hover:border-primary/30;
+  }
+  
+  .sparekei-btn-accent {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium transition-all duration-300;
+    @apply bg-accent text-accent-foreground hover:bg-accent/90 hover:shadow-lg hover:shadow-accent/25;
+  }
+  
+  .emergency-btn {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium transition-all duration-300;
+    @apply bg-emergency text-white hover:bg-emergency/90 animate-emergency-pulse;
+  }
+  
+  .section-container {
+    @apply w-full px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16;
+  }
+  
+  .page-container {
+    @apply w-full min-h-screen pt-20 pb-8 px-4 sm:px-6 lg:px-8;
+  }
+  
+  .card-grid {
+    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6;
+  }
+  
+  .status-badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  
+  .status-healthy {
+    @apply status-badge bg-success/15 text-success border border-success/30;
+  }
+  
+  .status-attention {
+    @apply status-badge bg-warning/15 text-warning border border-warning/30;
+  }
+  
+  .status-critical {
+    @apply status-badge bg-emergency/15 text-emergency border border-emergency/30;
+  }
+  
+  .nav-item {
+    @apply flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200;
+    @apply text-muted-foreground hover:text-foreground hover:bg-sidebar-accent;
+  }
+  
+  .nav-item-active {
+    @apply nav-item bg-primary/10 text-primary border border-primary/20;
+  }
+  
+  .metric-card {
+    @apply glass-card p-5 flex flex-col gap-3;
+  }
+  
+  .metric-value {
+    @apply text-2xl lg:text-3xl font-bold tracking-tight;
+  }
+  
+  .metric-label {
+    @apply text-xs text-muted-foreground uppercase tracking-wider font-medium;
+  }
+  
+  .health-score-ring {
+    @apply relative w-24 h-24 rounded-full flex items-center justify-center;
+  }
+  
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 3px;
+  }
+  
+  .hero-gradient {
+    background: linear-gradient(135deg, hsl(222 30% 5%) 0%, hsl(222 30% 8%) 50%, hsl(210 50% 12%) 100%);
+  }
+  
+  .glow-primary {
+    box-shadow: 0 0 40px rgba(14, 165, 233, 0.15);
+  }
+  
+  .glow-accent {
+    box-shadow: 0 0 40px rgba(245, 158, 11, 0.15);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .animation-delay-100 {
+    animation-delay: 100ms;
+  }
+  
+  .animation-delay-200 {
+    animation-delay: 200ms;
+  }
+  
+  .animation-delay-300 {
+    animation-delay: 300ms;
+  }
+  
+  .animation-delay-400 {
+    animation-delay: 400ms;
+  }
+  
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+  
+  .preserve-3d {
+    transform-style: preserve-3d;
+  }
+  
+  .backface-hidden {
+    backface-visibility: hidden;
   }
 }
