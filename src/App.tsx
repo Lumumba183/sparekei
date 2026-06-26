@@ -13,6 +13,10 @@ import OwnerDashboard from '@/pages/dashboards/OwnerDashboard';
 import MechanicDashboard from '@/pages/dashboards/MechanicDashboard';
 import VendorDashboard from '@/pages/dashboards/VendorDashboard';
 import AdminDashboard from '@/pages/dashboards/AdminDashboard';
+import FleetManagerDashboard from '@/pages/dashboards/FleetManagerDashboard';
+import ServiceNodeDashboard from '@/pages/dashboards/ServiceNodeDashboard';
+import WholesalerDashboard from '@/pages/dashboards/WholesalerDashboard';
+import ManufacturerDashboard from '@/pages/dashboards/ManufacturerDashboard';
 
 // Feature Pages
 import MarketplacePage from '@/pages/MarketplacePage';
@@ -21,6 +25,9 @@ import EmergencyPage from '@/pages/EmergencyPage';
 import VehiclePassportPage from '@/pages/VehiclePassportPage';
 import PredictiveAlertsPage from '@/pages/PredictiveAlertsPage';
 import AIConciergePage from '@/pages/AIConciergePage';
+import CartPage from '@/pages/CartPage';
+import RFQPage from '@/pages/RFQPage';
+import SymptomSearchPage from '@/pages/SymptomSearchPage';
 
 // Role Pages
 import JobsPage from '@/pages/JobsPage';
@@ -32,6 +39,9 @@ import AnalyticsPage from '@/pages/AnalyticsPage';
 import UsersPage from '@/pages/UsersPage';
 import CitiesPage from '@/pages/CitiesPage';
 import AdminCenterPage from '@/pages/AdminCenterPage';
+import RecruitmentFunnelPage from '@/pages/RecruitmentFunnelPage';
+import PushNotificationCenterPage from '@/pages/PushNotificationCenterPage';
+import CompetitorMonitoringPage from '@/pages/CompetitorMonitoringPage';
 import SettingsPage from '@/pages/SettingsPage';
 import NotificationsPage from '@/pages/NotificationsPage';
 
@@ -55,6 +65,10 @@ function DashboardRouter() {
     case 'owner': return <OwnerDashboard />;
     case 'mechanic': return <MechanicDashboard />;
     case 'vendor': return <VendorDashboard />;
+    case 'wholesaler': return <WholesalerDashboard />;
+    case 'manufacturer': return <ManufacturerDashboard />;
+    case 'fleet_manager': return <FleetManagerDashboard />;
+    case 'service_node_operator': return <ServiceNodeDashboard />;
     case 'admin': return <AdminDashboard />;
     default: return <OwnerDashboard />;
   }
@@ -78,6 +92,9 @@ function AppRoutes() {
       <Route path="/passport" element={<ProtectedRoute allowedRoles={['owner']}><VehiclePassportPage /></ProtectedRoute>} />
       <Route path="/alerts" element={<ProtectedRoute><PredictiveAlertsPage /></ProtectedRoute>} />
       <Route path="/ai-concierge" element={<ProtectedRoute><AIConciergePage /></ProtectedRoute>} />
+      <Route path="/cart" element={<ProtectedRoute><CartPage /></ProtectedRoute>} />
+      <Route path="/rfq" element={<ProtectedRoute allowedRoles={['vendor', 'wholesaler', 'manufacturer']}><RFQPage /></ProtectedRoute>} />
+      <Route path="/symptom-search" element={<ProtectedRoute allowedRoles={['owner', 'mechanic', 'fleet_manager']}><SymptomSearchPage /></ProtectedRoute>} />
       
       {/* Role Routes */}
       <Route path="/jobs" element={<ProtectedRoute allowedRoles={['mechanic', 'bodyshop', 'detailer', 'solo_workshop']}><JobsPage /></ProtectedRoute>} />
@@ -89,6 +106,9 @@ function AppRoutes() {
       <Route path="/users" element={<ProtectedRoute allowedRoles={['admin']}><UsersPage /></ProtectedRoute>} />
       <Route path="/cities" element={<ProtectedRoute allowedRoles={['admin']}><CitiesPage /></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminCenterPage /></ProtectedRoute>} />
+      <Route path="/recruitment-funnel" element={<ProtectedRoute allowedRoles={['admin']}><RecruitmentFunnelPage /></ProtectedRoute>} />
+      <Route path="/push-center" element={<ProtectedRoute allowedRoles={['admin']}><PushNotificationCenterPage /></ProtectedRoute>} />
+      <Route path="/competitor-monitor" element={<ProtectedRoute allowedRoles={['admin']}><CompetitorMonitoringPage /></ProtectedRoute>} />
       
       {/* Common Routes */}
       <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />

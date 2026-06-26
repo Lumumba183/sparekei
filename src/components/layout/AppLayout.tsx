@@ -7,7 +7,7 @@ import {
   Settings, LogOut, ChevronLeft, ChevronRight, Bell,
   Menu, Shield, BrainCircuit, Truck, BarChart3, Users,
   Store, Package, Banknote, HeartPulse,
-  Sparkles, MapPin
+  Sparkles, MapPin, Search, FileText, Eye, UserPlus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +15,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { notifications } from '@/data/mockData';
+import { notifications, cartItems } from '@/data/mockData';
 import type { UserRole } from '@/types';
 
 interface NavItem {
@@ -27,21 +27,27 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', roles: ['owner', 'mechanic', 'vendor', 'wholesaler', 'manufacturer', 'fleet_manager', 'admin'] },
+  { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', roles: ['owner', 'mechanic', 'vendor', 'wholesaler', 'manufacturer', 'fleet_manager', 'service_node_operator', 'admin'] },
   { label: 'Marketplace', icon: ShoppingCart, path: '/marketplace', roles: ['owner', 'mechanic', 'vendor', 'wholesaler', 'manufacturer', 'fleet_manager'] },
+  { label: 'Symptom Search', icon: Search, path: '/symptom-search', roles: ['owner', 'mechanic', 'fleet_manager'] },
+  { label: 'Cart', icon: ShoppingCart, path: '/cart', roles: ['owner', 'mechanic', 'vendor', 'wholesaler', 'manufacturer', 'fleet_manager'], badge: cartItems.length },
   { label: 'Services', icon: Wrench, path: '/services', roles: ['owner', 'mechanic', 'fleet_manager'] },
   { label: 'Emergency', icon: Siren, path: '/emergency', roles: ['owner', 'mechanic', 'fleet_manager'], badge: 0 },
   { label: 'Vehicle Passport', icon: ClipboardCheck, path: '/passport', roles: ['owner'] },
   { label: 'Predictive Alerts', icon: HeartPulse, path: '/alerts', roles: ['owner', 'mechanic', 'admin'], badge: 3 },
   { label: 'My Jobs', icon: Wrench, path: '/jobs', roles: ['mechanic', 'bodyshop', 'detailer', 'solo_workshop'] },
-  { label: 'Earnings', icon: Banknote, path: '/earnings', roles: ['mechanic', 'vendor', 'bodyshop', 'detailer', 'solo_workshop'] },
+  { label: 'Earnings', icon: Banknote, path: '/earnings', roles: ['mechanic', 'vendor', 'bodyshop', 'detailer', 'solo_workshop', 'service_node_operator'] },
   { label: 'My Storefront', icon: Store, path: '/storefront', roles: ['vendor'] },
   { label: 'Inventory', icon: Package, path: '/inventory', roles: ['vendor', 'wholesaler'] },
+  { label: 'RFQ', icon: FileText, path: '/rfq', roles: ['vendor', 'wholesaler', 'manufacturer'] },
   { label: 'Fleet Command', icon: Truck, path: '/fleet', roles: ['fleet_manager', 'admin'] },
   { label: 'AI Concierge', icon: BrainCircuit, path: '/ai-concierge', roles: ['owner', 'mechanic', 'vendor', 'fleet_manager', 'admin'] },
   { label: 'Analytics', icon: BarChart3, path: '/analytics', roles: ['vendor', 'wholesaler', 'manufacturer', 'admin'] },
   { label: 'Users', icon: Users, path: '/users', roles: ['admin'] },
   { label: 'Cities', icon: MapPin, path: '/cities', roles: ['admin'] },
+  { label: 'Recruitment', icon: UserPlus, path: '/recruitment-funnel', roles: ['admin'] },
+  { label: 'Push Center', icon: Bell, path: '/push-center', roles: ['admin'] },
+  { label: 'Competitors', icon: Eye, path: '/competitor-monitor', roles: ['admin'] },
   { label: 'Admin Center', icon: Shield, path: '/admin', roles: ['admin'] },
 ];
 
@@ -57,7 +63,7 @@ const roleLabels: Record<UserRole, string> = {
   audio_electronics: 'Audio Specialist',
   wiring_electronics: 'Wiring Specialist',
   solo_workshop: 'Solo Workshop',
-  service_node_operator: 'Service Node',
+  service_node_operator: 'Service Node Operator',
   admin: 'Administrator',
 };
 
