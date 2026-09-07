@@ -1,3 +1,4 @@
+import { ClerkLoading, ClerkLoaded } from '@clerk/clerk-react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { Toaster } from '@/components/ui/sonner';
@@ -124,7 +125,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <ClerkLoading><div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-pulse text-lg text-muted-foreground">Loading Sparekei…</div></div></ClerkLoading><ClerkLoaded><AppRoutes /></ClerkLoaded>
         <Toaster position="top-right" richColors />
       </AuthProvider>
     </BrowserRouter>

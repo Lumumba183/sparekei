@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useCallback, useState, type ReactNode } from 'react';
+import { useUser, useClerk } from '@clerk/clerk-react';
 import type { User, UserRole } from '@/types';
-import { currentUser } from '@/data/mockData';
+import { getSupabase } from '@/lib/supabase';
 
 interface AuthContextType {
   user: User | null;
@@ -14,47 +15,60 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(currentUser);
-  const [isLoading, setIsLoading] = useState(false);
+const ADMIN_EMAIL = ((import.meta.env.VITE_ADMIN_EMAIL as string | undefined) ?? '').toLowerCase();
 
-  const login = useCallback(async (email: string, _password: string) => {
-    setIsLoading(true);
-    await new Promise(r => setTimeout(r, 800));
-    const mockUser: User = {
-      id: 'usr-' + Date.now(),
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const { user: clerkUser, isLoaded } = useUser();
+  const { signOut, session } = useClerk();
+  const [user, setUser] = useState<User | null>(null);
+
+  // Bridge Clerk identity -> app User; provision row in Supabase app_users.
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (!clerkUser) { setUser(null); return; }
+
+    const email = clerkUser.primaryEmailAddress?.emailAddress ?? '';
+    const metaRole = clerkUser.publicMetadata?.role as UserRole | undefined;
+    const role: UserRole =
+      email.toLowerCase() === ADMIN_EMAIL ? 'admin' : (metaRole ?? 'owner');
+
+    const appUser: User = {
+      id: clerkUser.id,
       email,
-      fullName: email.split('@')[0],
-      role: 'owner',
-      avatar: `https://i.pravatar.cc/150?u=${email}`,
+      fullName: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(' ') || email.split('@')[0],
+      role,
+      avatar: clerkUser.imageUrl || `https://i.pravatar.cc/150?u=${email}`,
       city: 'Nairobi',
       subscriptionPlan: 'premium',
       subscriptionStatus: 'active',
     };
-    setUser(mockUser);
-    setIsLoading(false);
-  }, []);
+    setUser(appUser);
 
-  const register = useCallback(async (email: string, _password: string, fullName: string, role: UserRole) => {
-    setIsLoading(true);
-    await new Promise(r => setTimeout(r, 800));
-    const mockUser: User = {
-      id: 'usr-' + Date.now(),
-      email,
-      fullName,
-      role,
-      avatar: `https://i.pravatar.cc/150?u=${email}`,
-      city: 'Nairobi',
-      subscriptionPlan: 'basic',
-      subscriptionStatus: 'trial',
-    };
-    setUser(mockUser);
-    setIsLoading(false);
-  }, []);
+    // Fire-and-forget provisioning into Supabase (RLS self-upsert policy).
+    (async () => {
+      try {
+        const token = await session?.getToken();
+        const supabase = getSupabase(token);
+        await supabase.from('app_users').upsert(
+          {
+            clerk_user_id: clerkUser.id,
+            email: email.toLowerCase(),
+            full_name: appUser.fullName,
+            role,
+          },
+          { onConflict: 'email' }
+        );
+      } catch {
+        /* non-fatal: app runs off Clerk identity even if Supabase is unreachable */
+      }
+    })();
+  }, [clerkUser, isLoaded, session]);
 
-  const logout = useCallback(() => {
-    setUser(null);
-  }, []);
+  // Real auth happens in Clerk's <SignIn>/<SignUp> on /login and /register.
+  const login = useCallback(async (_email: string, _password: string) => {}, []);
+  const register = useCallback(async (_email: string, _password: string, _fullName: string, _role: UserRole) => {}, []);
+
+  const logout = useCallback(() => { signOut(); }, [signOut]);
 
   const switchRole = useCallback((role: UserRole) => {
     setUser(prev => prev ? { ...prev, role } : null);
@@ -64,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider value={{
       user,
       isAuthenticated: !!user,
-      isLoading,
+      isLoading: !isLoaded,
       login,
       register,
       logout,
