@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/sonner';
 import AppLayout from '@/components/layout/AppLayout';
 
 // Public Pages
+import AIBrainPage from '@/pages/AIBrainPage';
 import LandingPage from '@/pages/LandingPage';
 import LoginPage from '@/pages/LoginPage';
 import RegisterPage from '@/pages/RegisterPage';
@@ -107,6 +108,7 @@ function AppRoutes() {
       <Route path="/users" element={<ProtectedRoute allowedRoles={['admin']}><UsersPage /></ProtectedRoute>} />
       <Route path="/cities" element={<ProtectedRoute allowedRoles={['admin']}><CitiesPage /></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminCenterPage /></ProtectedRoute>} />
+      <Route path="/ai-brain" element={<ProtectedRoute allowedRoles={['admin']}><AIBrainPage /></ProtectedRoute>} />
       <Route path="/recruitment-funnel" element={<ProtectedRoute allowedRoles={['admin']}><RecruitmentFunnelPage /></ProtectedRoute>} />
       <Route path="/push-center" element={<ProtectedRoute allowedRoles={['admin']}><PushNotificationCenterPage /></ProtectedRoute>} />
       <Route path="/competitor-monitor" element={<ProtectedRoute allowedRoles={['admin']}><CompetitorMonitoringPage /></ProtectedRoute>} />

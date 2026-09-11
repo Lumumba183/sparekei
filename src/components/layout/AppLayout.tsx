@@ -49,6 +49,7 @@ const navItems: NavItem[] = [
   { label: 'Push Center', icon: Bell, path: '/push-center', roles: ['admin'] },
   { label: 'Competitors', icon: Eye, path: '/competitor-monitor', roles: ['admin'] },
   { label: 'Admin Center', icon: Shield, path: '/admin', roles: ['admin'] },
+    { label: 'AI Brain', icon: BrainCircuit, path: '/ai-brain', roles: ['admin'] },
 ];
 
 const roleLabels: Record<UserRole, string> = {
