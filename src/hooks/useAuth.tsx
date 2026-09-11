@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useCallback, useState, type React
 import { useUser, useClerk } from '@clerk/clerk-react';
 import type { User, UserRole } from '@/types';
 import { getSupabase } from '@/lib/supabase';
+import { ADMIN_EMAIL } from '@/lib/env';
 
 interface AuthContextType {
   user: User | null;
@@ -15,7 +16,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const ADMIN_EMAIL = ((import.meta.env.VITE_ADMIN_EMAIL as string | undefined) ?? '').toLowerCase();
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { user: clerkUser, isLoaded } = useUser();
