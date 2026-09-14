@@ -61,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (async () => {
         try {
           const token = await sessionRef.current?.getToken();
+          if (!token) return; // no Clerk session -> skip (avoids anon-key RLS 401 noise)
           const supabase = getSupabase(token);
           await supabase.from('app_users').upsert(
             {
