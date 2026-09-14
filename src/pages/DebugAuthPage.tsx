@@ -42,7 +42,6 @@ export default function DebugAuthPage() {
 
     // Supabase with anon key only (no bearer)
     try {
-      const anon = getSupabase(null);
       const resp = await fetch(
         `${(import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL)}/rest/v1/service_nodes?select=id&limit=1`,
         { headers: { apikey: (import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) as string } }
