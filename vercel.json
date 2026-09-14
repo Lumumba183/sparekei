@@ -34,7 +34,7 @@
   ],
   "functions": {
     "api/clerk-proxy.js": {
-      "runtime": "nodejs20.x"
+      "maxDuration": 10
     }
   }
 }
