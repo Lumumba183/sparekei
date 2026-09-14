@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/sonner';
 import AppLayout from '@/components/layout/AppLayout';
 
 // Public Pages
+import DebugAuthPage from '@/pages/DebugAuthPage';
 import AIBrainPage from '@/pages/AIBrainPage';
 import LandingPage from '@/pages/LandingPage';
 import LoginPage from '@/pages/LoginPage';
@@ -83,6 +84,7 @@ function AppRoutes() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/debug-auth" element={<DebugAuthPage />} />
       
       {/* Dashboard - Role-based */}
       <Route path="/dashboard" element={<ProtectedRoute><DashboardRouter /></ProtectedRoute>} />
