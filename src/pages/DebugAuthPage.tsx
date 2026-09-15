@@ -7,7 +7,7 @@ export default function DebugAuthPage() {
   const { user, isLoaded: userLoaded } = useUser();
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<any>(null);
-  const BUILD_TAG = 'ping-probe-v4';
+  const BUILD_TAG = 'claims-echo-v5';
 
   const run = async () => {
     setRunning(true);
@@ -68,7 +68,29 @@ export default function DebugAuthPage() {
         r.tests.supabaseWithClerkToken = { error: String(e?.message || e) };
       }
 
-      // Ping write probe: benign INSERT into open-policy table -> proves write-auth role
+      // Token claims (local decode, no network)
+    try {
+      const p = (token as string).split('.')[1];
+      const claims = JSON.parse(atob(p.replace(/-/g, '+').replace(/_/g, '/')));
+      r.tests.tokenClaims = {
+        iss: claims.iss, aud: claims.aud, sub: claims.sub,
+        role: claims.role ?? null, exp: claims.exp ?? null,
+      };
+    } catch (e: any) { r.tests.tokenClaims = { error: String(e?.message || e) }; }
+
+    // Header echo: does Authorization actually leave this browser?
+    try {
+      const er = await fetch('https://postman-echo.com/get', {
+        headers: { Authorization: 'Bearer ECHOMARKER123', 'X-Probe': 'sparekei' },
+      });
+      const ej = await er.json();
+      r.tests.headerEcho = {
+        status: er.status,
+        authorizationSeen: (ej.headers || {})['authorization'] || null,
+      };
+    } catch (e: any) { r.tests.headerEcho = { error: String(e?.message || e) }; }
+
+    // Ping write probe: benign INSERT into open-policy table -> proves write-auth role
       try {
         const pr = await fetch(
           (import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL) + '/rest/v1/ping',
