@@ -7,7 +7,7 @@ export default function DebugAuthPage() {
   const { user, isLoaded: userLoaded } = useUser();
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<any>(null);
-  const BUILD_TAG = 'claims-echo-v5';
+  const BUILD_TAG = 'role-template-v6';
 
   const run = async () => {
     setRunning(true);
@@ -34,7 +34,7 @@ export default function DebugAuthPage() {
     let token: string | null = null;
     let tokenError: string | null = null;
     try {
-      token = (await session?.getToken()) ?? null;
+      token = (await session?.getToken({ template: 'supabase' })) ?? null;
     } catch (e: any) {
       tokenError = String(e?.message || e);
     }
