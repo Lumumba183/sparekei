@@ -7,7 +7,7 @@ export default function DebugAuthPage() {
   const { user, isLoaded: userLoaded } = useUser();
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<any>(null);
-  const BUILD_TAG = 'grantfix-rawfetch-v3';
+  const BUILD_TAG = 'ping-probe-v4';
 
   const run = async () => {
     setRunning(true);
@@ -66,6 +66,26 @@ export default function DebugAuthPage() {
         r.tests.supabaseWithClerkToken = { status: resp.status, body: (await resp.text()).slice(0, 300) };
       } catch (e: any) {
         r.tests.supabaseWithClerkToken = { error: String(e?.message || e) };
+      }
+
+      // Ping write probe: benign INSERT into open-policy table -> proves write-auth role
+      try {
+        const pr = await fetch(
+          (import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL) + '/rest/v1/ping',
+          {
+            method: 'POST',
+            headers: {
+              apikey: (import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) as string,
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              Prefer: 'return=representation',
+            },
+            body: JSON.stringify({ note: 'auth-probe' }),
+          }
+        );
+        r.tests.pingWriteProbe = { status: pr.status, body: (await pr.text()).slice(0, 200) };
+      } catch (e: any) {
+        r.tests.pingWriteProbe = { exception: String(e?.message || e) };
       }
 
       // Raw-fetch upsert: POST with merge resolution + on_conflict (same semantics as supabase-js upsert)
