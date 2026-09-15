@@ -1,4 +1,5 @@
-import { useState } from 'react';
+
+import { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
@@ -72,6 +73,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, logout } = useAuth();
+  const __spyCount = useRef(0);
+  const __spyPrevUser = useRef<unknown>(null);
+  useEffect(() => {
+    __spyCount.current++;
+    const same = __spyPrevUser.current === user;
+    if (__spyCount.current <= 40) {
+      console.log(`[spy] render #${__spyCount.current} sameUserRef=${same} role=${user?.role} t=${Date.now()}`);
+    }
+    __spyPrevUser.current = user;
+  });
   const location = useLocation();
   const navigate = useNavigate();
 
