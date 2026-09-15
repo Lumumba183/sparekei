@@ -8,10 +8,11 @@ export default function DebugAuthPage() {
   const { user, isLoaded: userLoaded } = useUser();
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<any>(null);
+  const BUILD_TAG = 'grantfix-rawfetch-v3';
 
   const run = async () => {
     setRunning(true);
-    const r: any = { generatedAt: new Date().toISOString(), tests: {} };
+    const r: any = { buildTag: BUILD_TAG, generatedAt: new Date().toISOString(), tests: {} };
 
     r.tests.browser = {
       cookieEnabled: typeof navigator !== 'undefined' ? navigator.cookieEnabled : 'n/a',
@@ -68,26 +69,29 @@ export default function DebugAuthPage() {
         r.tests.supabaseWithClerkToken = { error: String(e?.message || e) };
       }
 
-      // The actual provisioning upsert (idempotent) with full error capture
+      // Raw-fetch upsert: POST with merge resolution + on_conflict (same semantics as supabase-js upsert)
       try {
-        const supabase = getSupabase(token);
-        const { data, error, status, statusText } = await supabase
-          .from('app_users')
-          .upsert(
-            {
+        const email = (user?.primaryEmailAddress?.emailAddress ?? 'unknown').toLowerCase();
+        const resp = await fetch(
+          (import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL) +
+            '/rest/v1/app_users?on_conflict=email',
+          {
+            method: 'POST',
+            headers: {
+              apikey: (import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) as string,
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              Prefer: 'resolution=merge-duplicates,return=representation',
+            },
+            body: JSON.stringify({
               clerk_user_id: user?.id ?? 'unknown',
-              email: (user?.primaryEmailAddress?.emailAddress ?? 'unknown').toLowerCase(),
+              email,
               full_name: 'Diagnostics Probe',
               role: 'owner',
-            },
-            { onConflict: 'email' }
-          )
-          .select('email, role');
-        r.tests.upsertProbe = {
-          status, statusText,
-          data: data ?? null,
-          error: error ? { message: error.message, code: (error as any).code, details: error.details, hint: error.hint } : null,
-        };
+            }),
+          }
+        );
+        r.tests.upsertProbe = { status: resp.status, body: (await resp.text()).slice(0, 400) };
       } catch (e: any) {
         r.tests.upsertProbe = { exception: String(e?.message || e) };
       }
