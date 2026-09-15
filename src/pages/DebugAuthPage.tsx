@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useSession, useUser } from '@clerk/clerk-react';
-import { getSupabase } from '@/lib/supabase';
 
 // Built to capture the EXACT auth failure. Run while logged in AND while logged out.
 export default function DebugAuthPage() {
