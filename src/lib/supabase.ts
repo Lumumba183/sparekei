@@ -8,6 +8,7 @@ export function getSupabase(clerkToken?: string | null) {
   if (clerkToken) extra['Authorization'] = `Bearer ${clerkToken}`;
   return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: {
+      headers: { ...extra },
       fetch: ((input: RequestInfo | URL, init: RequestInit = {}) => {
         const h = new Headers(init.headers);
         for (const [k, v] of Object.entries(extra)) h.set(k, v);
