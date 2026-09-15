@@ -35,7 +35,7 @@ export default function AIBrainPage() {
   const [docTitle, setDocTitle] = useState('');
   const [docContent, setDocContent] = useState('');
 
-  const token = useCallback(async () => session?.getToken() ?? null, [session]);
+  const token = useCallback(async () => (await session?.getToken({ template: 'supabase' })) ?? null, [session]);
 
   const run = useCallback(async (fn: (t: string | null) => Promise<void>) => {
     setBusy(true); setError(null); setNotice(null);
