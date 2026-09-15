@@ -3,17 +3,14 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "routes": [
+  "rewrites": [
     {
-      "handle": "filesystem"
+      "source": "/__clerk/(.*)",
+      "destination": "/api/clerk-proxy/$1"
     },
     {
-      "src": "/__clerk/(.*)",
-      "dest": "/api/clerk-proxy/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ],
   "headers": [

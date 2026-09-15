@@ -30,7 +30,7 @@ export default function RegisterPage() {
           signInUrl="/login"
           fallbackRedirectUrl="/dashboard"
           appearance={{
-            variables: { colorPrimary: '#3b82f6', colorBackground: '#0a0f1a', colorInputBackground: '#101827', colorInputText: '#e5e7eb' },
+            variables: { colorPrimary: '#3b82f6', colorBackground: '#0a0f1a', colorInputBackground: '#101827', colorInputText: '#e5e7eb', colorText: '#e5e7eb', colorTextSecondary: '#9ca3af' },
             elements: { card: 'shadow-2xl border border-white/10' },
           }}
         />

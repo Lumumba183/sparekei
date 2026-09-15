@@ -50,9 +50,23 @@ import NotificationsPage from '@/pages/NotificationsPage';
 
 import type { UserRole } from '@/types';
 
+function FullScreenLoader() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="animate-pulse text-lg text-muted-foreground">Loading Sparekei…</div>
+    </div>
+  );
+}
+
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: UserRole[] }) {
-  const { user, isAuthenticated } = useAuth();
-  
+  const { user, isAuthenticated, isLoading } = useAuth();
+
+  // Wait for Clerk + the auth bridge. Previously the guard fired
+  // <Navigate to="/login"> on the very first render of every page load
+  // (context user not bridged yet) and Clerk's <SignIn> bounced straight
+  // back to /dashboard — a visible login<->dashboard flicker on every
+  // refresh or direct visit to a protected route.
+  if (isLoading) return <FullScreenLoader />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (allowedRoles && !allowedRoles.includes(user!.role)) {
     return <Navigate to="/dashboard" replace />;
@@ -129,7 +143,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <ClerkLoading><div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-pulse text-lg text-muted-foreground">Loading Sparekei…</div></div></ClerkLoading><ClerkLoaded><AppRoutes /></ClerkLoaded>
+        <ClerkLoading><FullScreenLoader /></ClerkLoading><ClerkLoaded><AppRoutes /></ClerkLoaded>
         <Toaster position="top-right" richColors />
       </AuthProvider>
     </BrowserRouter>

@@ -92,7 +92,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const isActive = (path: string) => location.pathname === path;
 
-  const NavContent = () => (
+  // Plain JSX, NOT a nested component: a `const NavContent = () => ...`
+  // defined inside render gets a new component identity on every render,
+  // which makes React unmount+remount the whole sidebar subtree each time —
+  // a major source of the visible flicker. Inline JSX reconciles in place.
+  const navContent = (
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className={cn(
@@ -187,7 +191,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         "hidden lg:flex fixed left-0 top-0 h-screen flex-col bg-sidebar border-r border-border/50 z-40 transition-all duration-300",
         collapsed ? "w-[72px]" : "w-64"
       )}>
-        <NavContent />
+        {navContent}
       </aside>
 
       {/* Mobile Sidebar */}
@@ -198,7 +202,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </button>
         </SheetTrigger>
         <SheetContent side="left" className="w-72 p-0 bg-sidebar border-r border-border">
-          <NavContent />
+          {navContent}
         </SheetContent>
       </Sheet>
 

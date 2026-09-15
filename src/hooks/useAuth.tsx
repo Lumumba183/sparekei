@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useCallback, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useUser, useSession, useClerk } from '@clerk/clerk-react';
 import type { User, UserRole } from '@/types';
 import { getSupabase } from '@/lib/supabase';
@@ -89,16 +89,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(prev => (prev ? { ...prev, role } : null));
   }, []);
 
+  // While Clerk HAS a signed-in user but the bridge effect hasn't populated
+  // the context user yet, we are still "loading". Without this, route guards
+  // saw isAuthenticated=false on the first render of every page load/refresh
+  // and bounced to /login, which bounced straight back -> visible flicker.
+  const bridging = !!clerkUser && user === null;
+
+  // Memoized value: Clerk updates its hooks periodically (session touches,
+  // token refresh). A fresh object identity every render used to re-render
+  // every consumer app-wide for no reason.
+  const value = useMemo<AuthContextType>(() => ({
+    user,
+    isAuthenticated: !!user,
+    isLoading: !isLoaded || bridging,
+    login,
+    register,
+    logout,
+    switchRole,
+  }), [user, isLoaded, bridging, login, register, logout, switchRole]);
+
   return (
-    <AuthContext.Provider value={{
-      user,
-      isAuthenticated: !!user,
-      isLoading: !isLoaded,
-      login,
-      register,
-      logout,
-      switchRole,
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
