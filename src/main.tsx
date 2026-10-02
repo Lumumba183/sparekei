@@ -1,6 +1,9 @@
 import { createRoot } from 'react-dom/client';
 import { ClerkProvider } from '@clerk/clerk-react';
 import './index.css';
+import { installAuthFlowDebug } from '@/lib/authflow-debug';
+
+installAuthFlowDebug();
 import App from './App.tsx';
 import { CLERK_PUBLISHABLE_KEY } from '@/lib/env';
 
