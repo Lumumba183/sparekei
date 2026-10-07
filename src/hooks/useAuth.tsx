@@ -37,7 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const email = clerkUser.primaryEmailAddress?.emailAddress ?? '';
-    const metaRole = clerkUser.publicMetadata?.role as UserRole | undefined;
+    const metaRole = (clerkUser.publicMetadata?.role ?? (clerkUser as any).unsafeMetadata?.role) as UserRole | undefined;
     const role: UserRole =
       email.toLowerCase() === ADMIN_EMAIL.toLowerCase() ? 'admin' : (metaRole ?? 'owner');
 
