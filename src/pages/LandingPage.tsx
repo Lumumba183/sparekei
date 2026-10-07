@@ -57,9 +57,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center">
-                <Car className="w-5 h-5 text-white" />
-              </div>
+              <img src="/sparekei-crest.png" alt="Sparekei" className="w-9 h-9 rounded-full ring-1 ring-primary/40" />
               <span className="text-xl font-bold">Sparekei</span>
             </div>
             
@@ -323,9 +321,7 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-4 gap-8 mb-8">
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                  <Car className="w-4 h-4 text-white" />
-                </div>
+                <img src="/sparekei-crest.png" alt="Sparekei" className="w-8 h-8 rounded-full ring-1 ring-primary/40" />
                 <span className="text-lg font-bold">Sparekei</span>
               </div>
               <p className="text-sm text-muted-foreground">Africa's most intelligent automotive platform connecting vehicle owners, mechanics, vendors, and fleet operators.</p>
