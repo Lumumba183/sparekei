@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  Shield, BrainCircuit, Siren, ShoppingCart, Wrench,
+  Car, Shield, BrainCircuit, Siren, ShoppingCart, Wrench,
   ChevronRight, Star, Users, Globe, Zap,
   CheckCircle, ArrowRight, Menu, X, Activity
 } from 'lucide-react';
