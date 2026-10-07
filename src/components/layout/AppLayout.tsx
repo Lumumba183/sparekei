@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import {
-  Car, LayoutDashboard, ShoppingCart, Wrench, Siren, ClipboardCheck,
+  LayoutDashboard, ShoppingCart, Wrench, Siren, ClipboardCheck,
   Settings, LogOut, ChevronLeft, ChevronRight, Bell,
   Menu, Shield, BrainCircuit, Truck, BarChart3, Users,
   Store, Package, Banknote, HeartPulse,
