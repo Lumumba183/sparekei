@@ -10,7 +10,7 @@
     --card-foreground: 210 20% 96%;
     --popover: 222 25% 10%;
     --popover-foreground: 210 20% 96%;
-    --primary: 210 100% 52%;
+    --primary: 35 95% 52%;
     --primary-foreground: 0 0% 100%;
     --secondary: 222 20% 16%;
     --secondary-foreground: 210 20% 96%;
@@ -22,7 +22,7 @@
     --destructive-foreground: 0 0% 100%;
     --border: 222 20% 18%;
     --input: 222 20% 18%;
-    --ring: 210 100% 52%;
+    --ring: 35 95% 52%;
     --radius: 0.75rem;
     --success: 142 76% 42%;
     --success-foreground: 0 0% 100%;
@@ -39,13 +39,13 @@
     --elite-green-foreground: 0 0% 100%;
     --sidebar-background: 222 30% 5%;
     --sidebar-foreground: 210 20% 90%;
-    --sidebar-primary: 210 100% 52%;
+    --sidebar-primary: 35 95% 52%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 222 20% 14%;
     --sidebar-accent-foreground: 210 20% 96%;
     --sidebar-border: 222 20% 16%;
     --sidebar-ring: 210 100% 52%;
-    --chart-1: 210 100% 52%;
+    --chart-1: 35 95% 52%;
     --chart-2: 142 76% 42%;
     --chart-3: 38 95% 50%;
     --chart-4: 280 65% 60%;
