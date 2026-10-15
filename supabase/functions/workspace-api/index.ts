@@ -41,7 +41,8 @@ Deno.serve(async (req) => {
         db.from('branches').select('*').in('org_id', orgIds.length ? orgIds : ['00000000-0000-0000-0000-000000000000']),
         db.from('provider_capabilities').select('*, capability_verifications(state, note, created_at)').in('org_id', orgIds.length ? orgIds : ['00000000-0000-0000-0000-000000000000']).order('created_at', { ascending: false }),
       ]);
-      return Response.json({ orgs: orgs ?? [], branches: branches ?? [], capabilities: caps ?? [], memberships: memberships ?? [] }, { headers: cors });
+      const { data: bookings } = await db.from('bookings').select('*').in('provider_org_id', orgIds.length ? orgIds : ['00000000-0000-0000-0000-000000000000']).order('created_at', { ascending: false }).limit(50);
+      return Response.json({ orgs: orgs ?? [], branches: branches ?? [], capabilities: caps ?? [], memberships: memberships ?? [], bookings: bookings ?? [] }, { headers: cors });
     }
     if (action === 'org.create') {
       if (!s(body.name)) throw new HttpError(400, 'name required');
