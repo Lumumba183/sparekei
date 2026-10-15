@@ -2,6 +2,9 @@ import { ClerkLoading, ClerkLoaded } from '@clerk/clerk-react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { Toaster } from '@/components/ui/sonner';
+import DataTruthBanner from '@/components/DataTruthBanner';
+import GovernmentCasesPage from '@/pages/gov/GovernmentCasesPage';
+import GovernmentCaseDetailPage from '@/pages/gov/GovernmentCaseDetailPage';
 import AppLayout from '@/components/layout/AppLayout';
 
 // Public Pages
@@ -93,6 +96,8 @@ function DashboardRouter() {
 
 function AppRoutes() {
   return (
+    <>
+    <DataTruthBanner />
     <Routes>
       {/* Public Routes */}
       <Route path="/" element={<LandingPage />} />
@@ -110,6 +115,8 @@ function AppRoutes() {
       <Route path="/passport" element={<ProtectedRoute allowedRoles={['owner']}><VehiclePassportPage /></ProtectedRoute>} />
       <Route path="/alerts" element={<ProtectedRoute><PredictiveAlertsPage /></ProtectedRoute>} />
       <Route path="/ai-concierge" element={<ProtectedRoute><AIConciergePage /></ProtectedRoute>} />
+      <Route path="/government/cases" element={<ProtectedRoute allowedRoles={['owner', 'fleet_manager', 'admin']}><GovernmentCasesPage /></ProtectedRoute>} />
+      <Route path="/government/cases/:id" element={<ProtectedRoute allowedRoles={['owner', 'fleet_manager', 'admin']}><GovernmentCaseDetailPage /></ProtectedRoute>} />
       <Route path="/cart" element={<ProtectedRoute><CartPage /></ProtectedRoute>} />
       <Route path="/rfq" element={<ProtectedRoute allowedRoles={['vendor', 'wholesaler', 'manufacturer']}><RFQPage /></ProtectedRoute>} />
       <Route path="/symptom-search" element={<ProtectedRoute allowedRoles={['owner', 'mechanic', 'fleet_manager']}><SymptomSearchPage /></ProtectedRoute>} />
@@ -136,6 +143,7 @@ function AppRoutes() {
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }
 
