@@ -26,6 +26,8 @@ export const PAGE_SOURCES: PageSource[] = [
   { path: '/ai-concierge', label: 'AI Concierge', source: 'ai-concierge edge function (OpenAI GPT-4.1-mini) + concierge_conversations log', status: 'live' },
   { path: '/government/cases', label: 'Compliance cases', source: 'gov_cases + gov_readiness_templates (synthetic test lane)', status: 'sample', note: 'by design: test environment only, no official integration' },
   { path: '/emergency', label: 'Emergency', source: 'static UI — no dispatch backend', status: 'unverified', note: 'SOS intake not yet connected' },
+  { path: '/provider', label: 'Provider Hub', source: 'organizations, provider_capabilities, bookings (live)', status: 'live' },
+  { path: '/payments', label: 'Payment Sandbox', source: 'payment_providers, payment_intents (sandbox adapters)', status: 'sample', note: 'simulated money only — no live processing' },
 ];
 
 export function sourceForPath(pathname: string): PageSource | undefined {
