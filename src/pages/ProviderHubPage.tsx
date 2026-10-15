@@ -59,7 +59,6 @@ export default function ProviderHubPage() {
   };
 
   const myOrgId = data?.orgs?.[0]?.id;
-  const myBookings = data?.bookings ?? [];
 
   return (
     <div className="container py-6 space-y-4 max-w-4xl">
