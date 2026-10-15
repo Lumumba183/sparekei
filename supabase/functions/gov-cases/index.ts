@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
     }
     if (req.method === 'GET' && action === 'list') {
       const { data, error } = await admin.from('gov_cases')
-        .select('id, case_number, case_type, jurisdiction, status, vehicle_id, is_test, updated_at, vehicles(make, model, registration_number)')
+        .select('id, case_number, case_type, jurisdiction, status, vehicle_id, is_test, updated_at, vehicles(make, model, registration)')
         .eq('is_test', true).order('updated_at', { ascending: false }).limit(200);
       if (error) throw new HttpError(500, error.message);
       return Response.json({ cases: data ?? [], test_only: true }, { headers: cors });
@@ -56,18 +56,18 @@ Deno.serve(async (req) => {
       const [{ data: tasks }, { data: evidence }, { data: vh }] = await Promise.all([
         admin.from('gov_case_tasks').select('*').eq('case_id', id).order('sort_order'),
         admin.from('gov_case_evidence').select('*').eq('case_id', id).order('created_at'),
-        admin.from('vehicles').select('id, make, model, year, registration_number').eq('owner_id', user.id),
+        admin.from('vehicles').select('id, make, model, year, registration').eq('owner_id', user.id),
       ]);
       // Vehicle-history review context: passport stamps + service orders for this vehicle
       let history: any[] = [];
       if (c.vehicle_id) {
         const [{ data: stamps }, { data: orders }] = await Promise.all([
-          admin.from('passport_stamps').select('*').eq('vehicle_id', c.vehicle_id).order('created_at', { ascending: false }).limit(50),
-          admin.from('service_orders').select('id, status, created_at, service_items(description)').eq('vehicle_id', c.vehicle_id).order('created_at', { ascending: false }).limit(50),
+          admin.from('passport_stamps').select('id, stamp_type, title, description, mileage_km, verified, stamped_at').eq('vehicle_id', c.vehicle_id).order('stamped_at', { ascending: false }).limit(50),
+          admin.from('service_orders').select('id, status, total_amount, created_at, completed_at').eq('vehicle_id', c.vehicle_id).order('created_at', { ascending: false }).limit(50),
         ]);
         history = [
-          ...(stamps ?? []).map((s: any) => ({ kind: 'passport', at: s.created_at, summary: s.summary ?? s.stamp_type ?? 'record' })),
-          ...(orders ?? []).map((o: any) => ({ kind: 'service', at: o.created_at, summary: `Service order ${o.status}` })),
+          ...(stamps ?? []).map((s: any) => ({ kind: 'passport', at: s.stamped_at, summary: s.title ?? s.stamp_type ?? 'record', verified: s.verified })),
+          ...(orders ?? []).map((o: any) => ({ kind: 'service', at: o.created_at, summary: `Service order — ${o.status}` })),
         ].sort((a, b) => (a.at < b.at ? 1 : -1));
       }
       return Response.json({ case: c, tasks: tasks ?? [], evidence: evidence ?? [], vehicles: vh ?? [], vehicle_history: history, test_only: true }, { headers: cors });
