@@ -12,27 +12,24 @@ export interface PageSource {
 }
 
 export const PAGE_SOURCES: PageSource[] = [
-  { path: '/', label: 'Landing', source: 'static content + Clerk session state', status: 'live' },
-  { 
-  { path: '/', label: 'Owner workspace', source: 'mockData.ts', status: 'sample', note: 'being wired to vehicles/service_orders' },
+  { path: '/', label: 'Owner home', source: 'Supabase (vehicles, service_orders) + sample KPI cards', status: 'sample', note: 'vehicle/order tables live; overview cards sample' },
   { path: '/mechanic', label: 'Mechanic workspace', source: 'mockData.ts', status: 'sample' },
   { path: '/service-node', label: 'Service node workspace', source: 'mockData.ts', status: 'sample' },
   { path: '/vendor', label: 'Vendor workspace', source: 'mockData.ts', status: 'sample' },
   { path: '/wholesaler', label: 'Wholesaler workspace', source: 'mockData.ts', status: 'sample' },
   { path: '/fleet', label: 'Fleet workspace', source: 'mockData.ts', status: 'sample' },
   { path: '/manufacturer', label: 'Manufacturer workspace', source: 'mockData.ts', status: 'sample' },
-  { path: '/admin', label: 'Admin center', source: 'Supabase (app_users, service_nodes) + partial sample metrics', status: 'sample', note: 'user/node tables live; KPI cards sample' },
+  { path: '/admin', label: 'Admin center', source: 'Supabase (app_users, service_nodes) + sample metrics', status: 'sample', note: 'user/node tables live; KPI cards sample' },
   { path: '/marketplace', label: 'Marketplace', source: 'marketplace_listings (live table, seeded rows)', status: 'sample', note: 'table is real; current rows are seed data' },
   { path: '/jobs', label: 'Jobs', source: 'mockData.ts', status: 'sample' },
   { path: '/ai-brain', label: 'AI Brain', source: 'ai-reason edge function + ai_tool_runs provenance', status: 'live' },
   { path: '/ai-concierge', label: 'AI Concierge', source: 'ai-concierge edge function (OpenAI GPT-4.1-mini) + concierge_conversations log', status: 'live' },
-  { path: '/government/cases', label: 'Government & compliance cases', source: 'gov_cases + templates (synthetic test lane)', status: 'sample', note: 'by design: test environment only, no official integration' },
+  { path: '/government/cases', label: 'Compliance cases', source: 'gov_cases + gov_readiness_templates (synthetic test lane)', status: 'sample', note: 'by design: test environment only, no official integration' },
   { path: '/emergency', label: 'Emergency', source: 'static UI — no dispatch backend', status: 'unverified', note: 'SOS intake not yet connected' },
 ];
 
 export function sourceForPath(pathname: string): PageSource | undefined {
   const hit = PAGE_SOURCES.find(p => p.path === pathname);
   if (hit) return hit;
-  // prefix match for detail routes
   return PAGE_SOURCES.find(p => pathname.startsWith(p.path + '/'));
 }
