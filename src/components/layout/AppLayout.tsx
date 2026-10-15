@@ -7,7 +7,7 @@ import {
   LayoutDashboard, ShoppingCart, Wrench, Siren, ClipboardCheck,
   Settings, LogOut, ChevronLeft, ChevronRight, Bell,
   Menu, Shield, BrainCircuit, Truck, BarChart3, Users,
-  Store, Package, Banknote, HeartPulse,
+  Store, Package, Banknote, HeartPulse, ShieldCheck,
   Sparkles, MapPin, Search, FileText, Eye, UserPlus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
