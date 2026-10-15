@@ -31,7 +31,7 @@ export default function GovernmentCaseDetailPage() {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [evClass, setEvClass] = useState('submitted');
-  const [evDoc, setEvDoc] = useState('document');
+  const [evDoc] = useState('document');
   const [evLabel, setEvLabel] = useState('');
   const [evNote, setEvNote] = useState('');
 
