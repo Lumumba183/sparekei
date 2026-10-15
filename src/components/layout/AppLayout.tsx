@@ -43,6 +43,7 @@ const navItems: NavItem[] = [
   { label: 'RFQ', icon: FileText, path: '/rfq', roles: ['vendor', 'wholesaler', 'manufacturer'] },
   { label: 'Fleet Command', icon: Truck, path: '/fleet', roles: ['fleet_manager', 'admin'] },
   { label: 'AI Concierge', icon: BrainCircuit, path: '/ai-concierge', roles: ['owner', 'mechanic', 'vendor', 'fleet_manager', 'admin'] },
+  { label: 'Compliance Cases', icon: ShieldCheck, path: '/government/cases', roles: ['owner', 'fleet_manager', 'admin'] },
   { label: 'Analytics', icon: BarChart3, path: '/analytics', roles: ['vendor', 'wholesaler', 'manufacturer', 'admin'] },
   { label: 'Users', icon: Users, path: '/users', roles: ['admin'] },
   { label: 'Cities', icon: MapPin, path: '/cities', roles: ['admin'] },
