@@ -5,6 +5,8 @@ import { Toaster } from '@/components/ui/sonner';
 import DataTruthBanner from '@/components/DataTruthBanner';
 import GovernmentCasesPage from '@/pages/gov/GovernmentCasesPage';
 import GovernmentCaseDetailPage from '@/pages/gov/GovernmentCaseDetailPage';
+import ProviderHubPage from '@/pages/ProviderHubPage';
+import PaymentSandboxPage from '@/pages/PaymentSandboxPage';
 import AppLayout from '@/components/layout/AppLayout';
 
 // Public Pages
@@ -116,7 +118,9 @@ function AppRoutes() {
       <Route path="/alerts" element={<ProtectedRoute><PredictiveAlertsPage /></ProtectedRoute>} />
       <Route path="/ai-concierge" element={<ProtectedRoute><AIConciergePage /></ProtectedRoute>} />
       <Route path="/government/cases" element={<ProtectedRoute allowedRoles={['owner', 'fleet_manager', 'admin']}><GovernmentCasesPage /></ProtectedRoute>} />
-      <Route path="/government/cases/:id" element={<ProtectedRoute allowedRoles={['owner', 'fleet_manager', 'admin']}><GovernmentCaseDetailPage /></ProtectedRoute>} />
+      <Route path="/government/cases/:id" element={<ProtectedRoute allowedRoles={['owner', 'fleet_manager', 'admin']}><GovernmentCaseDetailPage />
+      <Route path="/provider" element={<ProtectedRoute><ProviderHubPage /></ProtectedRoute>} />
+      <Route path="/payments" element={<ProtectedRoute><PaymentSandboxPage /></ProtectedRoute>} /></ProtectedRoute>} />
       <Route path="/cart" element={<ProtectedRoute><CartPage /></ProtectedRoute>} />
       <Route path="/rfq" element={<ProtectedRoute allowedRoles={['vendor', 'wholesaler', 'manufacturer']}><RFQPage /></ProtectedRoute>} />
       <Route path="/symptom-search" element={<ProtectedRoute allowedRoles={['owner', 'mechanic', 'fleet_manager']}><SymptomSearchPage /></ProtectedRoute>} />
