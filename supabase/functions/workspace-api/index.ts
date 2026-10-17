@@ -225,6 +225,183 @@ Deno.serve(async (req) => {
       return Response.json({ banners: (banners ?? []).filter((b: any) => b.audience === 'all' || b.audience === `role:${user.role}`) }, { headers: cors });
     }
 
+    // ============ ACADEMY FULL (client requirement list, 17 Oct) ============
+    // Eligibility, exams from question banks, pass/retake rules, credentials,
+    // verification, renewal, appeals, practical assessment hook, badges.
+    const requireAdmin = (u: any) => { if (u.role !== 'admin') throw new HttpError(403, 'Admin only'); };
+
+    if (action === 'academy.course') {
+      const { data: course } = await db.from('courses').select('*').eq('id', body.course_id).single();
+      if (!course) throw new HttpError(404, 'Course not found');
+      const eligible = (course.allowed_roles ?? []).includes(user.role);
+      let prereqMet = true;
+      if (course.prerequisite_course_id) {
+        const { data: pre } = await db.from('enrollments').select('status').eq('course_id', course.prerequisite_course_id).eq('user_id', user.id).maybeSingle();
+        prereqMet = !!pre && pre.status === 'COMPLETED';
+      }
+      const { data: qb } = await db.from('question_banks').select('module_index, questions').eq('course_id', course.id);
+      const { data: attempts } = await db.from('exam_attempts').select('*').eq('course_id', course.id).eq('user_id', user.id).order('created_at', { ascending: false });
+      const { data: cred } = await db.from('credentials').select('*').eq('course_id', course.id).eq('user_id', user.id).eq('revoked', false).order('issued_at', { ascending: false }).limit(1).maybeSingle();
+      const last = (attempts ?? [])[0];
+      const cooldownUntil = last ? new Date(new Date(last.created_at).getTime() + (course.retake_cooldown_hours ?? 24) * 3600e3).toISOString() : null;
+      const attemptsUsed = (attempts ?? []).length;
+      const canExam = eligible && prereqMet && attemptsUsed < (course.max_attempts ?? 3) && (!cooldownUntil || cooldownUntil <= new Date().toISOString());
+      return Response.json({
+        course, eligible, prereq_met: prereqMet,
+        question_counts: (qb ?? []).map((x: any) => ({ module_index: x.module_index, count: (x.questions ?? []).length })),
+        attempts_used: attemptsUsed, max_attempts: course.max_attempts ?? 3,
+        cooldown_until: cooldownUntil, can_exam: canExam,
+        attempts: (attempts ?? []).map((a: any) => ({ id: a.id, attempt_no: a.attempt_no, score: a.score, passed: a.passed, appeal_state: a.appeal_state, created_at: a.created_at })),
+        credential: cred ?? null,
+      }, { headers: cors });
+    }
+    if (action === 'academy.exam.start') {
+      const { data: course } = await db.from('courses').select('*').eq('id', body.course_id).single();
+      if (!course) throw new HttpError(404, 'Course not found');
+      if (!(course.allowed_roles ?? []).includes(user.role)) throw new HttpError(403, 'Your role is not eligible for this course');
+      if (course.prerequisite_course_id) {
+        const { data: pre } = await db.from('enrollments').select('status').eq('course_id', course.prerequisite_course_id).eq('user_id', user.id).maybeSingle();
+        if (!pre || pre.status !== 'COMPLETED') throw new HttpError(403, 'Prerequisite course not completed');
+      }
+      const { data: attempts } = await db.from('exam_attempts').select('created_at').eq('course_id', course.id).eq('user_id', user.id).order('created_at', { ascending: false });
+      if ((attempts ?? []).length >= (course.max_attempts ?? 3)) throw new HttpError(429, 'Maximum attempts reached — appeal route available');
+      const last = (attempts ?? [])[0];
+      if (last) {
+        const until = new Date(new Date(last.created_at).getTime() + (course.retake_cooldown_hours ?? 24) * 3600e3);
+        if (until > new Date()) throw new HttpError(429, `Retake cooldown until ${until.toISOString()}`);
+      }
+      const { data: qb } = await db.from('question_banks').select('questions').eq('course_id', course.id);
+      const questions = (qb ?? []).flatMap((x: any) => x.questions ?? []).map((q: any, i: number) => ({ n: i, q: q.q, choices: q.choices })); // answers NEVER sent
+      return Response.json({ questions, pass_mark: course.pass_mark ?? 70, attempt_no: (attempts ?? []).length + 1 }, { headers: cors });
+    }
+    if (action === 'academy.exam.submit') {
+      const { data: course } = await db.from('courses').select('*').eq('id', body.course_id).single();
+      if (!course) throw new HttpError(404, 'Course not found');
+      const { data: qb } = await db.from('question_banks').select('questions').eq('course_id', course.id);
+      const bank = (qb ?? []).flatMap((x: any) => x.questions ?? []);
+      const answers: number[] = Array.isArray(body.answers) ? body.answers : [];
+      let correct = 0;
+      bank.forEach((q: any, i: number) => { if (answers[i] === q.answer) correct++; });
+      const score = bank.length ? Math.round((correct / bank.length) * 100) : 0;
+      const passed = score >= (course.pass_mark ?? 70);
+      const { data: prev } = await db.from('exam_attempts').select('id').eq('course_id', course.id).eq('user_id', user.id);
+      const { data: attempt, error } = await db.from('exam_attempts').insert({
+        course_id: course.id, user_id: user.id, attempt_no: (prev ?? []).length + 1, answers, score, passed,
+      }).select('*').single();
+      if (error) throw new HttpError(500, error.message);
+      let credential = null;
+      if (passed) {
+        await db.from('enrollments').update({ status: 'COMPLETED', progress: 100, completed_at: new Date().toISOString() }).eq('course_id', course.id).eq('user_id', user.id);
+        const number = 'SPK-ACAD-' + Math.floor(100000 + Math.random() * 899999);
+        const ins = await db.from('credentials').insert({
+          user_id: user.id, course_id: course.id, credential_number: number,
+          expires_at: new Date(Date.now() + 365 * 864e5).toISOString(),
+        }).select('*').single();
+        credential = ins.data;
+      }
+      await audit(user, 'academy.exam.submit', 'exam_attempts', attempt.id, { score, passed });
+      return Response.json({ score, passed, pass_mark: course.pass_mark ?? 70, credential, attempts_used: (prev ?? []).length + 1 }, { headers: cors });
+    }
+    if (action === 'academy.appeal') {
+      if (!body.attempt_id || !s(body.reason, 1000)) throw new HttpError(400, 'attempt_id + reason required');
+      const { error } = await db.from('exam_attempts').update({ appeal_state: 'PENDING', appeal_reason: s(body.reason, 1000) }).eq('id', body.attempt_id).eq('user_id', user.id);
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, 'academy.appeal', 'exam_attempts', body.attempt_id, {});
+      return Response.json({ ok: true, appeal_state: 'PENDING' }, { headers: cors });
+    }
+    if (action === 'academy.appeal.resolve') {
+      requireAdmin(user);
+      const state = body.uphold ? 'UPHELD' : 'REJECTED';
+      const { data: att } = await db.from('exam_attempts').select('*').eq('id', body.attempt_id).single();
+      await db.from('exam_attempts').update({ appeal_state: state }).eq('id', body.attempt_id);
+      let credential = null;
+      if (body.uphold && att) {
+        const number = 'SPK-ACAD-' + Math.floor(100000 + Math.random() * 899999);
+        const ins = await db.from('credentials').insert({
+          user_id: att.user_id, course_id: att.course_id, credential_number: number,
+          expires_at: new Date(Date.now() + 365 * 864e5).toISOString(),
+        }).select('*').single();
+        credential = ins.data;
+      }
+      await audit(user, 'academy.appeal.resolve', 'exam_attempts', body.attempt_id, { state });
+      return Response.json({ ok: true, appeal_state: state, credential }, { headers: cors });
+    }
+    if (action === 'credential.verify') {
+      const { data: cred } = await db.from('credentials').select('credential_number, issued_at, expires_at, revoked, courses(title), app_users(full_name)').eq('credential_number', s(body.number, 30)).maybeSingle();
+      if (!cred) return Response.json({ valid: false }, { headers: cors });
+      const expired = cred.expires_at ? new Date(cred.expires_at) < new Date() : false;
+      return Response.json({
+        valid: !cred.revoked && !expired, revoked: cred.revoked, expired,
+        holder: cred.app_users?.full_name, course: cred.courses?.title,
+        issued_at: cred.issued_at, expires_at: cred.expires_at,
+      }, { headers: cors });
+    }
+    if (action === 'credential.renew') {
+      const { data: old } = await db.from('credentials').select('*').eq('id', body.credential_id).eq('user_id', user.id).single();
+      if (!old) throw new HttpError(404, 'Credential not found');
+      const number = 'SPK-ACAD-' + Math.floor(100000 + Math.random() * 899999);
+      const { data: nu, error } = await db.from('credentials').insert({
+        user_id: user.id, course_id: old.course_id, credential_number: number,
+        renewed_from: old.id, expires_at: new Date(Date.now() + 365 * 864e5).toISOString(),
+      }).select('*').single();
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, 'credential.renew', 'credentials', nu.id, { renewed_from: old.id });
+      return Response.json({ credential: nu, previous: old.credential_number }, { headers: cors });
+    }
+    if (action === 'academy.practical.submit') {
+      // assessor-submitted practical assessment (admin in this phase)
+      requireAdmin(user);
+      const { data: pa, error } = await db.from('practical_assessments').insert({
+        course_id: body.course_id, user_id: body.user_id, assessor_id: user.id,
+        checklist: Array.isArray(body.checklist) ? body.checklist : [], result: body.result === 'PASSED' ? 'PASSED' : 'FAILED',
+      }).select('*').single();
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, 'academy.practical', 'practical_assessments', pa.id, { result: pa.result });
+      return Response.json({ practical: pa }, { headers: cors });
+    }
+    if (action === 'academy.badges') { // profile badges = active credentials
+      const { data: creds } = await db.from('credentials').select('credential_number, issued_at, courses(title)').eq('user_id', user.id).eq('revoked', false);
+      return Response.json({ badges: (creds ?? []).filter((c: any) => !c.expires_at || new Date(c.expires_at) > new Date()) }, { headers: cors });
+    }
+
+    // ============ VERIFIER WORKFLOW (M1) ============
+    if (action === 'capability.review') {
+      requireAdmin(user);
+      const states = ['PLATFORM_CHECKED', 'PROFESSIONALLY_VERIFIED', 'REJECTED', 'SUSPENDED'];
+      if (!body.capability_id || !states.includes(body.state)) throw new HttpError(400, 'capability_id + valid state');
+      await db.from('provider_capabilities').update({ status: body.state, verified_by: user.id }).eq('id', body.capability_id);
+      const { data: v } = await db.from('capability_verifications').insert({
+        capability_id: body.capability_id, verifier_id: user.id, state: body.state, note: s(body.note, 500),
+      }).select('id').single();
+      await audit(user, 'capability.review', 'provider_capabilities', body.capability_id, { state: body.state });
+      return Response.json({ ok: true, state: body.state }, { headers: cors });
+    }
+
+    // ============ BANNERS (admin) + COMMUNITY MODERATION ============
+    if (action === 'banner.admin') {
+      requireAdmin(user);
+      const { data: banners } = await db.from('site_banners').select('*').order('created_at', { ascending: false }).limit(50);
+      return Response.json({ banners: banners ?? [] }, { headers: cors });
+    }
+    if (action === 'banner.create') {
+      requireAdmin(user);
+      if (!s(body.title) || !s(body.body)) throw new HttpError(400, 'title + body required');
+      const { data: b, error } = await db.from('site_banners').insert({
+        title: s(body.title, 120), body: s(body.body, 400), audience: s(body.audience, 60) || 'all',
+        starts_at: body.starts_at ?? null, ends_at: body.ends_at ?? null, active: body.active !== false, created_by: user.id,
+      }).select('*').single();
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, 'banner.create', 'site_banners', b.id, {});
+      return Response.json({ banner: b }, { headers: cors });
+    }
+    if (action === 'community.moderate') {
+      requireAdmin(user);
+      const states = ['VISIBLE', 'HIDDEN', 'UNDER_REVIEW'];
+      if (!body.post_id || !states.includes(body.status)) throw new HttpError(400, 'post_id + valid status');
+      await db.from('community_posts').update({ status: body.status, moderated: true, moderated_by: user.id }).eq('id', body.post_id);
+      await audit(user, 'community.moderate', 'community_posts', body.post_id, { status: body.status });
+      return Response.json({ ok: true }, { headers: cors });
+    }
     throw new HttpError(400, 'Unknown action: ' + action);
   } catch (e) {
     const status = e instanceof HttpError ? e.status : 500;
