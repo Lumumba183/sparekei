@@ -28,6 +28,7 @@ export const PAGE_SOURCES: PageSource[] = [
   { path: '/emergency', label: 'Emergency', source: 'static UI — no dispatch backend', status: 'unverified', note: 'SOS intake not yet connected' },
   { path: '/provider', label: 'Provider Hub', source: 'organizations, provider_capabilities, bookings (live)', status: 'live' },
   { path: '/payments', label: 'Payment Sandbox', source: 'payment_providers, payment_intents (sandbox adapters)', status: 'sample', note: 'simulated money only — no live processing' },
+  { path: '/academy', label: 'Academy', source: 'courses, question_banks, exam_attempts, credentials (live)', status: 'live' },
 ];
 
 export function sourceForPath(pathname: string): PageSource | undefined {
