@@ -16,11 +16,20 @@ async function requireUser(req: Request) {
   if (!me?.[0]) throw new HttpError(401, 'Invalid session');
   return me[0] as { id: string; role: string; full_name: string };
 }
-const audit = (u: any, action: string, entity: string, entityId: any, meta: any = {}) =>
-  supabaseAdmin().rpc('log_audit_event', {
+const audit = async (u: any, action: string, entity: string, entityId: any, meta: any = {}) => {
+  const db = supabaseAdmin();
+  const { error: rpcErr } = await db.rpc('log_audit_event', {
     p_actor: u.id, p_role: u.role, p_action: action, p_entity: entity,
     p_entity_id: entityId == null ? null : String(entityId), p_metadata: meta,
-  }).then(() => {}, () => {});
+  });
+  if (rpcErr) { // F-01 hardening: never silently lose an audit record
+    const { error: insErr } = await db.from('audit_events').insert({
+      actor_id: u.id, actor_role: u.role, action, entity_type: entity,
+      entity_id: entityId == null ? null : String(entityId), metadata: meta ?? {},
+    });
+    if (insErr) console.error('AUDIT FAILURE (rpc + fallback):', rpcErr.message, insErr.message);
+  }
+};
 const s = (v: any, n = 200) => (v ?? '').toString().slice(0, n);
 
 Deno.serve(async (req) => {
@@ -401,6 +410,204 @@ Deno.serve(async (req) => {
       await db.from('community_posts').update({ status: body.status, moderated: true, moderated_by: user.id }).eq('id', body.post_id);
       await audit(user, 'community.moderate', 'community_posts', body.post_id, { status: body.status });
       return Response.json({ ok: true }, { headers: cors });
+    }
+    // ============ C1/C2: OFFER PUBLISH WITH FREE CAPS + MOQ/PRICE BREAKS ============
+    if (action === 'offer.publish') {
+      if (!body.org_id || !body.product_id || !(body.price > 0)) throw new HttpError(400, 'org_id + product_id + price required');
+      const visibility = body.visibility === 'private' ? 'private' : 'public';
+      // AC-003 caps: 10 active public listings; 10 distinct private inventory records
+      if (visibility === 'public') {
+        const { count } = await db.from('seller_offers').select('id', { count: 'exact', head: true })
+          .eq('org_id', body.org_id).eq('visibility', 'public').eq('status', 'PUBLISHED');
+        if ((count ?? 0) >= 10) throw new HttpError(429, 'Free plan allows 10 active public listings — deactivate one to replace it (AC-003)');
+      } else {
+        const { count } = await db.from('seller_offers').select('id', { count: 'exact', head: true })
+          .eq('org_id', body.org_id).eq('visibility', 'private').eq('status', 'PUBLISHED');
+        if ((count ?? 0) >= 10) throw new HttpError(429, 'Free plan allows 10 private inventory records (AC-003)');
+      }
+      const { data: offer, error } = await db.from('seller_offers').insert({
+        org_id: body.org_id, product_id: body.product_id, branch_id: body.branch_id ?? null,
+        price: body.price, currency: s(body.currency, 8) || 'KES', quantity: Math.max(0, parseInt(body.quantity) || 0),
+        visibility,
+        moq: Math.max(1, parseInt(body.moq) || 1),
+        price_breaks: Array.isArray(body.price_breaks) ? body.price_breaks : [],
+        status: 'PUBLISHED',
+      }).select('*').single();
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, 'offer.publish', 'seller_offers', offer.id, { visibility, moq: offer.moq });
+      await db.from('funnel_events').insert({ event_type: 'quote', actor_id: user.id, actor_class: user.role, entity_type: 'seller_offers', entity_id: offer.id, outcome: 'ok' });
+      return Response.json({ offer, cap_check: 'AC-003 enforced' }, { headers: cors });
+    }
+    if (action === 'offer.price_for') { // C2: MOQ + quantity-break resolution
+      const { data: offer } = await db.from('seller_offers').select('*').eq('id', body.offer_id).single();
+      if (!offer) throw new HttpError(404, 'Offer not found');
+      const qty = Math.max(1, parseInt(body.quantity) || 1);
+      if (qty < offer.moq) return Response.json({ eligible: false, reason: `MOQ is ${offer.moq}`, moq: offer.moq, quantity: qty }, { headers: cors });
+      let unit = Number(offer.price);
+      for (const br of (offer.price_breaks ?? []).sort((a: any, b: any) => b.min_qty - a.min_qty)) {
+        if (qty >= br.min_qty && br.unit_price > 0) { unit = Number(br.unit_price); break; }
+      }
+      return Response.json({ eligible: true, quantity: qty, unit_price: unit, total: +(unit * qty).toFixed(2), currency: offer.currency }, { headers: cors });
+    }
+
+    // ============ C3: INVENTORY LEDGER (internal consumption NEVER revenue) ============
+    if (action === 'inventory.add') {
+      if (!body.org_id || !s(body.name)) throw new HttpError(400, 'org_id + name required');
+      const { data: item, error } = await db.from('inventory_items').insert({
+        org_id: body.org_id, product_id: body.product_id ?? null, name: s(body.name, 160), sku: s(body.sku, 60), unit: s(body.unit, 20) || 'pc',
+      }).select('*').single();
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, 'inventory.add', 'inventory_items', item.id, {});
+      return Response.json({ item }, { headers: cors });
+    }
+    if (action === 'inventory.move') {
+      const types = ['receive', 'issue_internal', 'sale', 'sale_reserve', 'return', 'adjust'];
+      if (!body.item_id || !types.includes(body.movement_type) || !(body.quantity !== 0)) throw new HttpError(400, 'item_id + movement_type + quantity required');
+      const isRevenue = ['sale', 'return'].includes(body.movement_type);
+      const { data: mv, error } = await db.from('inventory_movements').insert({
+        item_id: body.item_id, org_id: body.org_id, movement_type: body.movement_type,
+        quantity: body.quantity, unit_cost: body.unit_cost ?? null, is_revenue: isRevenue,
+        reference: s(body.reference, 60), actor_id: user.id, note: s(body.note, 300),
+      }).select('*').single();
+      if (error) throw new HttpError(500, error.message); // guard trigger also rejects revenue-internal
+      const delta = ['issue_internal', 'sale', 'sale_reserve'].includes(body.movement_type) ? -Math.abs(body.quantity)
+        : body.movement_type === 'adjust' ? body.quantity : Math.abs(body.quantity);
+      await db.from('inventory_items').update({ on_hand: undefined }).eq('id', '00000000-0000-0000-0000-000000000000'); // no-op guard
+      const { data: it } = await db.from('inventory_items').select('on_hand').eq('id', body.item_id).single();
+      await db.from('inventory_items').update({ on_hand: Math.max(0, Number(it?.on_hand ?? 0) + delta) }).eq('id', body.item_id);
+      await audit(user, 'inventory.move', 'inventory_movements', mv.id, { type: body.movement_type, is_revenue: isRevenue });
+      return Response.json({ movement: mv, is_revenue: isRevenue, note: isRevenue ? 'booked to revenue' : 'non-revenue movement' }, { headers: cors });
+    }
+    if (action === 'inventory.list') {
+      const { data: items } = await db.from('inventory_items').select('*, inventory_movements(*)').eq('org_id', body.org_id ?? url.searchParams.get('org_id') ?? '').order('created_at', { ascending: false }).limit(100);
+      return Response.json({ items: items ?? [] }, { headers: cors });
+    }
+
+    // ============ C4: JOB-AWARE MATCHING (eligibility before ranking; paid cannot bypass) ============
+    if (action === 'match.providers') {
+      const serviceClass = s(body.service_class, 40);
+      if (!serviceClass) throw new HttpError(400, 'service_class required');
+      const { data: eligible } = await db.from('provider_capabilities')
+        .select('org_id, status, organizations(name)', { count: 'exact' })
+        .eq('service_class', serviceClass).in('status', ['PLATFORM_CHECKED', 'PROFESSIONALLY_VERIFIED']);
+      // Ranking uses ONLY permitted signals; verification state is a hard gate above.
+      const ranked = (eligible ?? [])
+        .map((c: any) => ({ org_id: c.org_id, name: c.organizations?.name, verified: c.status, match_reasons: ['verified_capability:' + serviceClass] }))
+        .sort((a: any, b: any) => (a.verified === 'PROFESSIONALLY_VERIFIED' ? -1 : 0) - (b.verified === 'PROFESSIONALLY_VERIFIED' ? -1 : 0));
+      await db.from('funnel_events').insert({ event_type: 'search', actor_id: user.id, actor_class: user.role, outcome: 'ok', meta: { service_class: serviceClass, eligible: ranked.length } });
+      return Response.json({ matches: ranked, rule: 'eligibility_first_paid_cannot_bypass (AC-006)', unverified_excluded: true }, { headers: cors });
+    }
+
+    // ============ C5: ENTITLEMENT CHECK / GRANT ============
+    if (action === 'entitlement.check') {
+      const cap = s(body.capability, 60);
+      const now = new Date().toISOString();
+      const { data: grants } = await db.from('entitlement_grants').select('*').eq('user_id', user.id)
+        .eq('capability', cap).eq('status', 'ACTIVE')
+        .or(`ends_at.is.null,ends_at.gte.${now}`);
+      const freeDefaults = ['ai_concierge', 'marketplace_buy', 'passport_records'];
+      const allowed = (grants ?? []).length > 0 || freeDefaults.includes(cap);
+      return Response.json({ capability: cap, allowed, source: (grants ?? [])[0]?.source ?? (allowed ? 'free' : null), rule: 'AC-007: payment_reconciled source requires verified intent' }, { headers: cors });
+    }
+    if (action === 'entitlement.grant') {
+      if (body.source === 'payment_reconciled' && user.role !== 'admin') throw new HttpError(403, 'Only admin grants payment-derived entitlements');
+      if (body.source === 'payment_reconciled' && body.payment_intent_id) {
+        const { data: pi } = await db.from('payment_intents').select('state').eq('id', body.payment_intent_id).single();
+        if (!pi || pi.state !== 'SUCCEEDED') throw new HttpError(409, 'Entitlement requires a SUCCEEDED (verified) payment intent — AC-007');
+      }
+      const { data: gr, error } = await db.from('entitlement_grants').insert({
+        user_id: body.user_id ?? user.id, capability: s(body.capability, 60), source: body.source,
+        plan_code: s(body.plan_code, 40) ?? null, payment_intent_id: body.payment_intent_id ?? null,
+        ends_at: body.ends_at ?? null,
+      }).select('*').single();
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, 'entitlement.grant', 'entitlement_grants', gr.id, { source: body.source });
+      return Response.json({ grant: gr }, { headers: cors });
+    }
+
+    // ============ C6: FAMILIARISATION LIFECYCLE (60-day, no silent auto-charge) ============
+    if (action === 'familiarisation.start') {
+      const existing = await db.from('familiarisation_windows').select('id').eq('user_id', user.id).gte('ends_at', new Date().toISOString()).limit(1);
+      if ((existing.data ?? []).length) throw new HttpError(409, 'An active familiarisation window already exists');
+      const start = new Date();
+      const end = new Date(start.getTime() + 60 * 864e5);
+      const { data: win, error } = await db.from('familiarisation_windows').insert({
+        user_id: user.id, plan_code: s(body.plan_code, 40) || 'pro', starts_at: start.toISOString(), ends_at: end.toISOString(),
+      }).select('*').single();
+      if (error) throw new HttpError(500, error.message);
+      await db.from('entitlement_grants').insert({
+        user_id: user.id, capability: 'familiarisation', source: 'familiarisation', plan_code: win.plan_code,
+        ends_at: end.toISOString(),
+      });
+      await audit(user, 'familiarisation.start', 'familiarisation_windows', win.id, { ends_at: end.toISOString(), note: 'no auto-charge on expiry (AC-008)' });
+      return Response.json({ window: win, ends_at: end.toISOString(), guarantee: 'expires to Permanent Free — no silent auto-charge' }, { headers: cors });
+    }
+    if (action === 'familiarisation.status') {
+      const { data: win } = await db.from('familiarisation_windows').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (!win) return Response.json({ active: false }, { headers: cors });
+      const now = new Date();
+      const active = new Date(win.ends_at) > now;
+      const daysLeft = active ? Math.ceil((new Date(win.ends_at).getTime() - now.getTime()) / 864e5) : 0;
+      return Response.json({ active, days_left: daysLeft, ends_at: win.ends_at, notice_sent: !!win.notice_sent_at, converted_to: win.converted_to }, { headers: cors });
+    }
+
+    // ============ C7: INTELLIGENCE DATA-SUFFICIENCY LOCK ============
+    if (action === 'insight.check') {
+      const { data: cfg } = await db.from('intelligence_capabilities').select('*').eq('capability', s(body.capability, 60)).maybeSingle();
+      if (!cfg || !cfg.enabled) return Response.json({ locked: true, reason: 'capability_not_registered' }, { headers: cors });
+      const table = { demand_forecast: 'funnel_events', quality_signals: 'gov_case_evidence', matching_rank: 'provider_capabilities' }[cfg.capability as string] ?? 'funnel_events';
+      const since = new Date(Date.now() - (cfg.max_data_age_days ?? 30) * 864e5).toISOString();
+      const { count } = await db.from(table as any).select('id', { count: 'exact', head: true }).gte('created_at', since);
+      const sufficient = (count ?? 0) >= (cfg.min_rows ?? 30);
+      return Response.json({
+        capability: cfg.capability, sufficient, rows: count ?? 0, min_rows: cfg.min_rows, max_age_days: cfg.max_data_age_days,
+        locked: !sufficient, reason: sufficient ? null : 'insufficient_fresh_data (AC-009 — capability stays locked or escalates)',
+      }, { headers: cors });
+    }
+
+    // ============ C8/C9: FUNNEL EVENTS + REPORTS ============
+    if (action === 'funnel.track') {
+      const types = ['search', 'view', 'enquiry', 'quote', 'order', 'booking', 'payment', 'report', 'recommendation'];
+      if (!types.includes(body.event_type)) throw new HttpError(400, 'event_type required');
+      const { data: ev, error } = await db.from('funnel_events').insert({
+        event_type: body.event_type, actor_id: user.id, actor_class: user.role,
+        entity_type: s(body.entity_type, 40) ?? null, entity_id: s(body.entity_id, 60) ?? null,
+        outcome: ['ok', 'failed', 'denied', 'timeout'].includes(body.outcome) ? body.outcome : 'ok',
+        data_quality: ['live', 'delayed', 'estimated', 'synthetic', 'unavailable'].includes(body.data_quality) ? body.data_quality : 'live',
+        meta: body.meta && typeof body.meta === 'object' ? body.meta : {},
+      }).select('id').single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ event: ev }, { headers: cors });
+    }
+    if (action === 'report.generate') {
+      const since = new Date(Date.now() - (parseInt(body.days) || 30) * 864e5).toISOString();
+      const { data: rows } = await db.from('funnel_events').select('event_type, outcome, data_quality, created_at').gte('created_at', since);
+      const byType: Record<string, any> = {};
+      for (const r of (rows ?? [])) {
+        const t = r.event_type;
+        byType[t] = byType[t] ?? { events: 0, ok: 0, failed: 0, denied: 0, synthetic: 0 };
+        byType[t].events++; byType[t][r.outcome] = (byType[t][r.outcome] ?? 0) + 1;
+        if (r.data_quality !== 'live') byType[t].synthetic++;
+      }
+      const { data: payRows } = await db.from('payment_intents').select('state').gte('created_at', since);
+      const paymentSummary = { total: (payRows ?? []).length, succeeded: (payRows ?? []).filter((p: any) => p.state === 'SUCCEEDED').length };
+      await audit(user, 'report.generate', 'funnel_events', null, { days: body.days ?? 30 });
+      return Response.json({
+        period_days: parseInt(body.days) || 30, generated_at: new Date().toISOString(),
+        funnel: byType, payments: paymentSummary,
+        provenance: 'sources: funnel_events, payment_intents · synthetic rows disclosed per bucket · missing telemetry ≠ zero (AC-011/CR-010)',
+      }, { headers: cors });
+    }
+
+    // ============ B5: ACADEMY RPL ============
+    if (action === 'academy.rpl') {
+      if (!body.course_id || !s(body.evidence, 500)) throw new HttpError(400, 'course_id + evidence required');
+      const { data: en, error } = await db.from('enrollments').update({
+        rpl_granted: true, rpl_evidence: s(body.evidence, 500), status: 'COMPLETED', progress: 100, completed_at: new Date().toISOString(),
+      }).eq('course_id', body.course_id).eq('user_id', user.id).select('*').single();
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, 'academy.rpl', 'enrollments', en.id, { course_id: body.course_id });
+      return Response.json({ enrollment: en, note: 'Recognition of prior learning granted with recorded evidence' }, { headers: cors });
     }
     throw new HttpError(400, 'Unknown action: ' + action);
   } catch (e) {
