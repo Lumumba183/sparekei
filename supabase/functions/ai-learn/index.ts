@@ -1,7 +1,7 @@
 // SPAREKEI LEARNING ENGINE — mines VERIFIED OUTCOMES (completed service orders,
 // delivered product orders, reviews) and proposes generalizations.
 // Proposals land in ai_learnings as 'pending' — a human must approve.
-import { cors, requireAdmin, openaiChat, estimateCost, HttpError } from '../_shared/ai.ts';
+import { cors, requireAdmin, openaiChat, estimateCost, HttpError } from '../_shared/core.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
