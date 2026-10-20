@@ -1,7 +1,7 @@
 // SPAREKEI PREDICTIVE ALERTS — deterministic, explainable heuristics over
 // verified data. No black box: every alert names its source rows.
 // v1 is fully deterministic (no LLM) by design; insights go to the Reasoning Console.
-import { cors, requireAdmin, HttpError } from '../_shared/ai.ts';
+import { cors, requireAdmin, HttpError } from '../_shared/core.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
