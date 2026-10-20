@@ -772,6 +772,92 @@ Deno.serve(async (req) => {
       await audit(user, 'academy.rpl', 'enrollments', en.id, { course_id: body.course_id });
       return Response.json({ enrollment: en, note: 'Recognition of prior learning granted with recorded evidence' }, { headers: cors });
     }
+
+    // ============ INDUSTRY-PARTNER ONBOARDING (S1/S2/S3/S0) ============
+    if (action === "org.profile") {
+      if (!body.org_id) throw new HttpError(400, "org_id required");
+      const upd: any = {};
+      if (Array.isArray(body.markets)) upd.markets = body.markets.slice(0, 50);
+      if (Array.isArray(body.brands)) upd.brands = body.brands.slice(0, 100);
+      if (Array.isArray(body.product_categories)) upd.product_categories = body.product_categories.slice(0, 100);
+      if (body.country) upd.country = s(body.country, 8).toUpperCase();
+      if (body.name) upd.name = s(body.name, 120);
+      if (!Object.keys(upd).length) throw new HttpError(400, "nothing to update");
+      const { data: org, error } = await db.from("organizations").update(upd).eq("id", body.org_id).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, "org.profile", "organizations", org.id, { keys: Object.keys(upd) });
+      return Response.json({ org }, { headers: cors });
+    }
+    if (action === "dist.link") {
+      if (!body.from_org_id || !body.to_org_id) throw new HttpError(400, "from_org_id + to_org_id required");
+      const { data: link, error } = await db.from("distribution_links").insert({
+        from_org_id: body.from_org_id, to_org_id: body.to_org_id,
+        link_type: ["supplies","distributes","authorizes","services"].includes(body.link_type) ? body.link_type : "supplies",
+        scope: body.scope && typeof body.scope === "object" ? body.scope : {},
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, "dist.link", "distribution_links", link.id, { type: link.link_type });
+      return Response.json({ link }, { headers: cors });
+    }
+    if (action === "dist.list") {
+      const orgId = body.org_id ?? url.searchParams.get("org_id");
+      const [{ data: out }, { data: inn }] = await Promise.all([
+        db.from("distribution_links").select("*, to:organizations!distribution_links_to_org_id_fkey(name)").eq("from_org_id", orgId),
+        db.from("distribution_links").select("*, from:organizations!distribution_links_from_org_id_fkey(name)").eq("to_org_id", orgId),
+      ]);
+      return Response.json({ supplies: out ?? [], supplied_by: inn ?? [] }, { headers: cors });
+    }
+    if (action === "catalogue.import") {
+      if (!body.org_id || !Array.isArray(body.products) || !body.products.length) throw new HttpError(400, "org_id + products[] required");
+      const results: any[] = [];
+      for (const p of body.products.slice(0, 200)) {
+        const ins = await db.from("canonical_products").insert({
+          name: s(p.name, 200), category: s(p.category, 60) || "general", brand: s(p.brand, 80) ?? null,
+          condition: ["genuine_oe","oe_supplier","aftermarket","remanufactured","refurbished","used"].includes(p.condition) ? p.condition : "aftermarket",
+          identifiers: p.identifiers && typeof p.identifiers === "object" ? p.identifiers : {},
+          provenance: { source: "partner_import", actor: user.id, claimed_at: new Date().toISOString(), ...(p.provenance && typeof p.provenance === "object" ? p.provenance : {}) },
+        }).select("id, name").single();
+        if (ins.error) { results.push({ name: p.name, ok: false, error: ins.error.message }); continue; }
+        if (p.offer && p.offer.price > 0) {
+          const off = await db.from("seller_offers").insert({
+            product_id: ins.data.id, org_id: body.org_id, price: p.offer.price, currency: s(p.offer.currency, 8) || "KES",
+            quantity: Math.max(0, parseInt(p.offer.quantity) || 0), visibility: p.offer.visibility === "private" ? "private" : "public",
+            moq: Math.max(1, parseInt(p.offer.moq) || 1),
+            price_breaks: Array.isArray(p.offer.price_breaks) ? p.offer.price_breaks : [],
+            status: "PUBLISHED",
+          }).select("id").single();
+          results.push({ name: p.name, ok: !off.error, product_id: ins.data.id, offer_id: off.data?.id ?? null, error: off.error?.message ?? null });
+        } else {
+          results.push({ name: p.name, ok: true, product_id: ins.data.id });
+        }
+      }
+      await audit(user, "catalogue.import", "canonical_products", body.org_id, { count: body.products.length, ok: results.filter((x) => x.ok).length });
+      await db.from("funnel_events").insert({ event_type: "view", actor_id: user.id, actor_class: user.role, outcome: "ok", meta: { kind: "catalogue_import", count: results.length } });
+      return Response.json({ results, imported: results.filter((x) => x.ok).length, failed: results.filter((x) => !x.ok).length }, { headers: cors });
+    }
+    if (action === "offers.browse") {
+      const cls = s(body.service_class ?? url.searchParams.get("q") ?? "", 60);
+      let q = db.from("seller_offers").select("id, price, currency, quantity, moq, price_breaks, visibility, status, canonical_products(name, brand, category), organizations(name, country, markets)").eq("status", "PUBLISHED").eq("visibility", "public").order("created_at", { ascending: false }).limit(50);
+      if (cls) q = q.or(`canonical_products.name.ilike.*${cls}*,canonical_products.brand.ilike.*${cls}*`);
+      const { data: offers, error } = await q;
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ offers: offers ?? [], note: "public offers only; caps enforced at publish (AC-003)" }, { headers: cors });
+    }
+    if (action === "pilot.tag") {
+      requireAdmin(user);
+      if (!body.user_id) throw new HttpError(400, "user_id required");
+      const { data: fm, error } = await db.from("founding_members").upsert({
+        user_id: body.user_id, cohort: s(body.cohort, 60) || "industry-pilot-2026",
+        tier: s(body.tier, 40) || "industry_partner", status: "ACTIVE",
+        benefits: { pilot: true, listing_cap_override: body.listing_cap_override === true, terms_version: s(body.terms_version, 20) || "pilot-v1" },
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      if (body.listing_cap_override) {
+        await db.from("entitlement_grants").insert({ user_id: body.user_id, capability: "catalogue_public_listings", source: "familiarisation", ends_at: new Date(Date.now() + 60 * 864e5).toISOString(), plan_code: "industry-pilot" });
+      }
+      await audit(user, "pilot.tag", "founding_members", body.user_id, { cohort: fm.cohort });
+      return Response.json({ founding_member: fm, terms: "charge-free pilot; no auto-charge on expiry (AC-008)" }, { headers: cors });
+    }
     throw new HttpError(400, 'Unknown action: ' + action);
   } catch (e) {
     const status = e instanceof HttpError ? e.status : 500;
