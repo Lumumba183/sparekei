@@ -1,6 +1,6 @@
 // SPAREKEI REASONING CONSOLE — tool-use loop over read-only, allowlisted
 // Supabase queries. The LLM interprets verified data; it cannot invent it.
-import { cors, requireAdmin, openaiChat, openaiEmbed, estimateCost, HttpError } from '../_shared/ai.ts';
+import { cors, requireAdmin, openaiChat, openaiEmbed, estimateCost, HttpError } from '../_shared/core.ts';
 
 const ALLOWED_TABLES = [
   'vehicles', 'service_nodes', 'service_items', 'service_orders',
