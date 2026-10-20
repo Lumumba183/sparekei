@@ -192,9 +192,15 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   try {
     const urlEarly = new URL(req.url);
+    if (urlEarly.searchParams.get('action') === 'offers.browse') {
+      const q0 = urlEarly.searchParams.get('q') ?? '';
+      const { data: offers0 } = await supabaseAdmin().from('seller_offers')
+        .select('id, price, currency, quantity, moq, price_breaks, visibility, canonical_products(name, brand, category), organizations(name, country, markets)')
+        .eq('status', 'PUBLISHED').eq('visibility', 'public').order('created_at', { ascending: false }).limit(50);
+      return Response.json({ offers: (offers0 ?? []).filter((o: any) => !q0 || JSON.stringify(o).toLowerCase().includes(q0.toLowerCase())), public: true }, { headers: cors });
+    }
     if (urlEarly.searchParams.get('action') === 'banner.public') {
       const db0 = supabaseAdmin();
-    const supabaseAdmin0 = supabaseAdmin;
       const now0 = new Date().toISOString();
       const { data: pub } = await db0.from('site_banners').select('title, body').eq('active', true).eq('audience', 'all')
         .or(`starts_at.is.null,starts_at.lte.${now0}`).or(`ends_at.is.null,ends_at.gte.${now0}`).limit(1);
