@@ -4,7 +4,7 @@
 // Governance (Concierge Completion & Acceptance Spec v1.0):
 //   - persona shapes vocabulary only; permissions stay server-side (RLS + role claims)
 //   - no invented stock/prices/fitment/bookings; limitations stated; every turn logged
-import { cors, supabaseAdmin, HttpError, openaiChat } from '../_shared/ai.ts';
+import { cors, supabaseAdmin, HttpError, openaiChat } from '../_shared/core.ts';
 
 const PERSONAS: Record<string, { label: string; system: string }> = {
   owner: { label: 'Vehicle Owner', system: `You are the Sparekei Concierge helping a vehicle owner in Kenya. Use clear, approachable language. Reference their vehicles and service history only when provided in context. Be transparent about uncertainty. If a task needs a real workflow (booking, ordering, payment, government submission), explain the next step and route to it — never claim it was done.` },
