@@ -21,9 +21,9 @@ async function restReq(method: string, pathAndQuery: string, opts: {
 } = {}) {
   const headers: Record<string, string> = {
     apikey: ANON_KEY(),
-    Authorization: `Bearer ${opts.token ?? SVC_KEY()}`,
     'Content-Type': 'application/json',
   };
+  if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
   const prefer: string[] = [];
   if (opts.count) prefer.push('count=exact');
   prefer.push(opts.minimal ? 'return=minimal' : 'return=representation');
@@ -52,7 +52,7 @@ class Query {
   private orders: string[] = [];
   private lim: number | null = null;
 
-  constructor(private table: string) {}
+  constructor(private table: string, private token?: string) {}
   select(cols?: string, opts?: { count?: string; head?: boolean }) {
     this.cols = cols ?? '*';
     if (opts?.count) this.wantsCount = true;
@@ -98,15 +98,15 @@ class Query {
 
   private async run(): Promise<{ data: any; error: any; count?: number }> {
     if (this.mode === 'insert') {
-      const r = await restReq('POST', `${this.table}?select=${encodeURIComponent(this.cols)}`, { body: this.insBody });
+      const r = await restReq('POST', `${this.table}?select=${encodeURIComponent(this.cols)}`, { body: this.insBody, token: this.token });
       return this.finish(r);
     }
     if (this.mode === 'update') {
       const q = [`select=${encodeURIComponent(this.cols)}`, ...this.parts].join('&');
-      const r = await restReq('PATCH', `${this.table}?${q}`, { body: this.updBody });
+      const r = await restReq('PATCH', `${this.table}?${q}`, { body: this.updBody, token: this.token });
       return this.finish(r);
     }
-    const r = await restReq('GET', `${this.table}?${this.buildQuery()}`, { count: this.wantsCount });
+    const r = await restReq('GET', `${this.table}?${this.buildQuery()}`, { count: this.wantsCount, token: this.token });
     return this.finish(r);
   }
 
@@ -115,11 +115,11 @@ class Query {
   then(onF: any, onR?: any) { return this.run().then(onF, onR); }
 }
 
-function restDb() {
+function restDb(token?: string) {
   return {
-    from: (table: string) => new Query(table),
+    from: (table: string) => new Query(table, token),
     rpc: async (fn: string, args: Record<string, unknown>) => {
-      const r = await restReq('POST', `rpc/${fn}`, { body: args });
+      const r = await restReq('POST', `rpc/${fn}`, { body: args, token });
       return { data: r.data, error: r.error };
     },
   };
@@ -133,13 +133,13 @@ async function requireUser(req: Request) {
   if (r.error) throw new HttpError(401, 'Invalid session');
   const me = Array.isArray(r.data) ? r.data[0] : r.data;
   if (!me) throw new HttpError(401, 'Invalid session');
-  return me as { id: string; role: string; full_name: string };
+  return { ...(me as object), token } as { id: string; role: string; full_name: string; token: string };
 }
 
 async function requireAdmin(req: Request) {
   const me = await requireUser(req);
   if (me.role !== 'admin') throw new HttpError(403, 'Admin role required');
-  return { supabase: restDb(), adminId: me.id, clerkToken: req.headers.get('Authorization')?.replace('Bearer ', '') ?? '' };
+  return { supabase: restDb(me.token), adminId: me.id, clerkToken: me.token };
 }
 
 // ---------- OpenAI helpers ----------
@@ -186,35 +186,7 @@ function estimateCost(model: string, tin: number, tout: number): number {
 }
 
 // Legacy alias so old call sites compile unchanged
-const supabaseAdmin = restDb;
-
-// Sparekei AI Concierge — multi-stakeholder assistant on the SHARED intelligence fabric.
-// Reuses _shared/ai.ts (openaiChat, supabaseAdmin, HttpError) — no parallel AI stack.
-// Audience: ANY authenticated user (ai-reason stays admin-gated for the AI Brain).
-// Governance (Concierge Completion & Acceptance Spec v1.0):
-//   - persona shapes vocabulary only; permissions stay server-side (RLS + role claims)
-//   - no invented stock/prices/fitment/bookings; limitations stated; every turn logged
-
-const PERSONAS: Record<string, { label: string; system: string }> = {
-  owner: { label: 'Vehicle Owner', system: `You are the Sparekei Concierge helping a vehicle owner in Kenya. Use clear, approachable language. Reference their vehicles and service history only when provided in context. Be transparent about uncertainty. If a task needs a real workflow (booking, ordering, payment, government submission), explain the next step and route to it — never claim it was done.` },
-  mechanic: { label: 'Mechanic (Fundi)', system: `You are the Sparekei Concierge helping a professional mechanic. Technical language is fine. For diagnostics ask for DTC codes, measurements and observations before concluding. NEVER fabricate torque values, pinouts, tolerances or OEM data — say when you do not know and route to the workshop workflow.` },
-  service_node_operator: { label: 'Garage / Service Provider', system: `You are the Sparekei Concierge helping a garage/service-node operator. Focus on jobs, bays, quotes, customer communication and evidence. Only reference bookings/jobs actually present in the provided context.` },
-  vendor: { label: 'Parts Vendor / Retailer', system: `You are the Sparekei Concierge helping a parts vendor. Focus on catalogue, fitment, inventory and RFQs. Never claim stock, prices or sales not present in the provided context.` },
-  wholesaler: { label: 'Wholesaler', system: `You are the Sparekei Concierge helping a parts wholesaler. Focus on bulk supply, MOQ, lead times and sourcing. Never invent credit lines, commitments or market figures.` },
-  manufacturer: { label: 'Manufacturer / OEM', system: `You are the Sparekei Concierge helping a manufacturer representative. Focus on product data, quality signals and distribution. Never declare recalls, defects or approvals without authoritative evidence.` },
-  fleet_manager: { label: 'Fleet Manager', system: `You are the Sparekei Concierge helping a fleet manager. Focus on maintenance schedules, downtime and authorized fleet vehicles only — never cross-tenant data.` },
-  admin: { label: 'Administrator', system: `You are the Sparekei Concierge helping a platform administrator. Provide network-level, aggregated information; respect privacy boundaries — the admin role is not blanket access to personal data.` },
-};
-
-const INTENT_RULES: Record<string, string> = {
-  part_identification: `INTENT: part identification. Collect evidence first: vehicle make/model/year/engine, part location & function, description of any photo, dimensions, markings/OE number, symptoms. If evidence is insufficient, ask ONE focused clarifying question. Distinguish: confirmed fitment / likely candidate / insufficient evidence / no match. Never invent compatibility, stock, prices, sellers or completed searches.`,
-  symptom: `INTENT: symptom/diagnostic help. Gather observations before concluding; present possibilities with uncertainty; advise qualified inspection for safety-critical issues.`,
-  marketplace_search: `INTENT: marketplace search. Suggest the real marketplace workflow. Do not claim you searched live inventory unless results are provided in context.`,
-  provider_discovery: `INTENT: provider discovery. Suggest the service-directory workflow with filters.`,
-  booking: `INTENT: booking/quote. Route to the booking or RFQ workflow. Never claim a booking exists.`,
-  vehicle_history: `INTENT: vehicle history. Only reference records present in the provided context.`,
-  general: `INTENT: general question. Answer helpfully within Sparekei's automotive scope.`,
-};
+const supabaseAdmin = () => restDb();
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -256,7 +228,7 @@ BOUNDARIES (never violate):
       messages: [...history, { role: 'user', content: message }],
     });
 
-    const { data: conv, error: convErr } = await supabaseAdmin().from('concierge_conversations').insert({
+    const { data: conv, error: convErr } = await restDb(user.token).from('concierge_conversations').insert({
       user_id: user.id, persona, intent: body.intent ?? 'general', evidence, message, answer,
       model: 'gpt-4.1-mini', latency_ms: Date.now() - started,
     }).select('id').single();
