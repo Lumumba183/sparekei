@@ -3,19 +3,8 @@
 //   M11 subscriptions / founding members / Academy / Community / banners
 // Hard rules: authenticated users only; payments are simulated (no real money,
 // no live providers); every consequential action writes audit_events.
-import { cors, supabaseAdmin, HttpError } from '../_shared/ai.ts';
+import { cors, supabaseAdmin, HttpError } from '../_shared/core.ts';
 
-async function requireUser(req: Request) {
-  const token = req.headers.get('Authorization')?.replace('Bearer ', '') ?? '';
-  if (!token) throw new HttpError(401, 'Missing authorization');
-  const { createClient } = await import('jsr:@supabase/supabase-js@2');
-  const anon = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
-  const { data: me } = await anon.from('app_users').select('id, role, full_name').limit(1);
-  if (!me?.[0]) throw new HttpError(401, 'Invalid session');
-  return me[0] as { id: string; role: string; full_name: string };
-}
 const audit = async (u: any, action: string, entity: string, entityId: any, meta: any = {}) => {
   const db = supabaseAdmin();
   const { error: rpcErr } = await db.rpc('log_audit_event', {
