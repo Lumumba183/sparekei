@@ -1,6 +1,6 @@
 // Knowledge-base ingestion: embeds an admin-supplied document via OpenAI and
 // stores it in knowledge_documents for semantic retrieval by ai-reason.
-import { cors, requireAdmin, openaiEmbed, HttpError } from '../_shared/ai.ts';
+import { cors, requireAdmin, openaiEmbed, HttpError } from '../_shared/core.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
