@@ -480,7 +480,6 @@ Deno.serve(async (req) => {
       if (error) throw new HttpError(500, error.message); // guard trigger also rejects revenue-internal
       const delta = ['issue_internal', 'sale', 'sale_reserve'].includes(body.movement_type) ? -Math.abs(body.quantity)
         : body.movement_type === 'adjust' ? body.quantity : Math.abs(body.quantity);
-      await db.from('inventory_items').update({ on_hand: undefined }).eq('id', '00000000-0000-0000-0000-000000000000'); // no-op guard
       const { data: it } = await db.from('inventory_items').select('on_hand').eq('id', body.item_id).single();
       await db.from('inventory_items').update({ on_hand: Math.max(0, Number(it?.on_hand ?? 0) + delta) }).eq('id', body.item_id);
       await audit(user, 'inventory.move', 'inventory_movements', mv.id, { type: body.movement_type, is_revenue: isRevenue });
