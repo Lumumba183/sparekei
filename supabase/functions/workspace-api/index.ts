@@ -194,6 +194,7 @@ Deno.serve(async (req) => {
     const urlEarly = new URL(req.url);
     if (urlEarly.searchParams.get('action') === 'banner.public') {
       const db0 = supabaseAdmin();
+    const supabaseAdmin0 = supabaseAdmin;
       const now0 = new Date().toISOString();
       const { data: pub } = await db0.from('site_banners').select('title, body').eq('active', true).eq('audience', 'all')
         .or(`starts_at.is.null,starts_at.lte.${now0}`).or(`ends_at.is.null,ends_at.gte.${now0}`).limit(1);
