@@ -21,9 +21,9 @@ async function restReq(method: string, pathAndQuery: string, opts: {
 } = {}) {
   const headers: Record<string, string> = {
     apikey: ANON_KEY(),
-    Authorization: `Bearer ${opts.token ?? SVC_KEY()}`,
     'Content-Type': 'application/json',
   };
+  if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
   const prefer: string[] = [];
   if (opts.count) prefer.push('count=exact');
   prefer.push(opts.minimal ? 'return=minimal' : 'return=representation');
@@ -52,7 +52,7 @@ class Query {
   private orders: string[] = [];
   private lim: number | null = null;
 
-  constructor(private table: string) {}
+  constructor(private table: string, private token?: string) {}
   select(cols?: string, opts?: { count?: string; head?: boolean }) {
     this.cols = cols ?? '*';
     if (opts?.count) this.wantsCount = true;
@@ -98,15 +98,15 @@ class Query {
 
   private async run(): Promise<{ data: any; error: any; count?: number }> {
     if (this.mode === 'insert') {
-      const r = await restReq('POST', `${this.table}?select=${encodeURIComponent(this.cols)}`, { body: this.insBody });
+      const r = await restReq('POST', `${this.table}?select=${encodeURIComponent(this.cols)}`, { body: this.insBody, token: this.token });
       return this.finish(r);
     }
     if (this.mode === 'update') {
       const q = [`select=${encodeURIComponent(this.cols)}`, ...this.parts].join('&');
-      const r = await restReq('PATCH', `${this.table}?${q}`, { body: this.updBody });
+      const r = await restReq('PATCH', `${this.table}?${q}`, { body: this.updBody, token: this.token });
       return this.finish(r);
     }
-    const r = await restReq('GET', `${this.table}?${this.buildQuery()}`, { count: this.wantsCount });
+    const r = await restReq('GET', `${this.table}?${this.buildQuery()}`, { count: this.wantsCount, token: this.token });
     return this.finish(r);
   }
 
@@ -115,11 +115,11 @@ class Query {
   then(onF: any, onR?: any) { return this.run().then(onF, onR); }
 }
 
-function restDb() {
+function restDb(token?: string) {
   return {
-    from: (table: string) => new Query(table),
+    from: (table: string) => new Query(table, token),
     rpc: async (fn: string, args: Record<string, unknown>) => {
-      const r = await restReq('POST', `rpc/${fn}`, { body: args });
+      const r = await restReq('POST', `rpc/${fn}`, { body: args, token });
       return { data: r.data, error: r.error };
     },
   };
@@ -133,13 +133,13 @@ async function requireUser(req: Request) {
   if (r.error) throw new HttpError(401, 'Invalid session');
   const me = Array.isArray(r.data) ? r.data[0] : r.data;
   if (!me) throw new HttpError(401, 'Invalid session');
-  return me as { id: string; role: string; full_name: string };
+  return { ...(me as object), token } as { id: string; role: string; full_name: string; token: string };
 }
 
 async function requireAdmin(req: Request) {
   const me = await requireUser(req);
   if (me.role !== 'admin') throw new HttpError(403, 'Admin role required');
-  return { supabase: restDb(), adminId: me.id, clerkToken: req.headers.get('Authorization')?.replace('Bearer ', '') ?? '' };
+  return { supabase: restDb(me.token), adminId: me.id, clerkToken: me.token };
 }
 
 // ---------- OpenAI helpers ----------
@@ -186,29 +186,7 @@ function estimateCost(model: string, tin: number, tout: number): number {
 }
 
 // Legacy alias so old call sites compile unchanged
-const supabaseAdmin = restDb;
-
-// Sparekei Workspace API — one governed entry point over the shared foundations:
-//   M1 provider org/capabilities · M2 offers/bookings · Payments (SANDBOX ONLY)
-//   M11 subscriptions / founding members / Academy / Community / banners
-// Hard rules: authenticated users only; payments are simulated (no real money,
-// no live providers); every consequential action writes audit_events.
-
-const audit = async (u: any, action: string, entity: string, entityId: any, meta: any = {}) => {
-  const db = supabaseAdmin();
-  const { error: rpcErr } = await db.rpc('log_audit_event', {
-    p_actor: u.id, p_role: u.role, p_action: action, p_entity: entity,
-    p_entity_id: entityId == null ? null : String(entityId), p_metadata: meta,
-  });
-  if (rpcErr) { // F-01 hardening: never silently lose an audit record
-    const { error: insErr } = await db.from('audit_events').insert({
-      actor_id: u.id, actor_role: u.role, action, entity_type: entity,
-      entity_id: entityId == null ? null : String(entityId), metadata: meta ?? {},
-    });
-    if (insErr) console.error('AUDIT FAILURE (rpc + fallback):', rpcErr.message, insErr.message);
-  }
-};
-const s = (v: any, n = 200) => (v ?? '').toString().slice(0, n);
+const supabaseAdmin = () => restDb();
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -222,7 +200,7 @@ Deno.serve(async (req) => {
       return Response.json({ banners: pub ?? [] }, { headers: cors });
     }
     const user = await requireUser(req);
-    const db = supabaseAdmin();
+    const db = restDb(user.token);
     const url = new URL(req.url);
     const action = url.searchParams.get('action') ?? '';
     const body = req.method === 'POST' ? await req.json().catch(() => ({})) : {};
