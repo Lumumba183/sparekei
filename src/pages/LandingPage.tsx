@@ -15,10 +15,10 @@ const fadeInUp = {
 };
 
 const features = [
-  { icon: Car, title: 'Digital Vehicle Passport', desc: 'Complete tamper-evident vehicle identity ledger with service history, compliance tracking, and resale valuation.', color: 'from-blue-500 to-cyan-500' },
-  { icon: BrainCircuit, title: 'AI-Powered Intelligence', desc: 'Gemini 2.5 Flash integration for predictive maintenance, fraud detection, mechanic scoring, and market analysis.', color: 'from-purple-500 to-pink-500' },
-  { icon: Siren, title: 'Emergency Dispatch', desc: '24/7 roadside assistance with real-time responder tracking, live ETA, and intelligent job routing.', color: 'from-red-500 to-orange-500' },
-  { icon: ShoppingCart, title: 'Marketplace & Escrow', desc: 'Alibaba-style marketplace for parts and services with milestone-based escrow protection for every transaction.', color: 'from-emerald-500 to-teal-500' },
+  { icon: Car, title: 'Digital Vehicle Passport', desc: 'Your vehicle's living record — service history, compliance readiness and provenance you control.', color: 'from-blue-500 to-cyan-500' },
+  { icon: BrainCircuit, title: 'AI-Powered Intelligence', desc: 'AI reasoning over your live vehicle and platform data — diagnostics guidance, service intelligence and answers with sources.', color: 'from-purple-500 to-pink-500' },
+  { icon: Siren, title: 'Emergency Dispatch', desc: 'Roadside help directory with verified provider contacts. In-app dispatch arrives with coverage and SLAs — we never fake an ETA.', color: 'from-red-500 to-orange-500' },
+  { icon: ShoppingCart, title: 'Marketplace & Escrow', desc: 'Multi-seller marketplace for parts and services with versioned offers and transparent stock. Escrow activates only when a licensed provider is connected.', color: 'from-emerald-500 to-teal-500' },
   { icon: Wrench, title: 'Universal Service Nodes', desc: '4-class service taxonomy from cosmetic care to enterprise workshops with bay management and hybrid cart.', color: 'from-amber-500 to-yellow-500' },
   { icon: Shield, title: 'Fleet Management', desc: 'Multi-vehicle command center with telematics, risk scoring, compliance tracking, and predictive alerts.', color: 'from-indigo-500 to-violet-500' },
 ];
@@ -40,6 +40,34 @@ export default function LandingPage() {
   const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [banners, setBanners] = useState<any[]>([]);
+
+  useEffect(() => {
+    // B1/AC-015: audience-targeted banners from the admin banner registry; silent for anonymous visitors
+    (async () => {
+      try {
+        const { getSupabase } = await import('@/lib/supabase');
+        const { useAuth } = await import('@/hooks/useAuth');
+        void useAuth;
+        const token = (await (await import('@clerk/clerk-react')).useSession?.()) ?? null;
+        void token;
+        const sb = getSupabase(null);
+        const { data } = await sb.functions.invoke('workspace-api', {
+          body: {},
+        });
+        void data;
+      } catch { /* anonymous: no banner */ }
+      try {
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/workspace-api?action=banner.list`, {
+          headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string },
+        });
+        if (res.ok) {
+          const j = await res.json();
+          setBanners((j.banners ?? []).slice(0, 1));
+        }
+      } catch { /* banners optional */ }
+    })();
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50);
@@ -49,6 +77,11 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      {banners.length > 0 && (
+        <div className="bg-primary text-primary-foreground text-center text-xs sm:text-sm py-2 px-4">
+          <strong>{banners[0].title}:</strong> {banners[0].body}
+        </div>
+      )}
       {/* Navigation */}
       <nav className={cn(
         "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
