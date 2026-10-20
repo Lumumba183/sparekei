@@ -43,30 +43,12 @@ export default function LandingPage() {
   const [banners, setBanners] = useState<any[]>([]);
 
   useEffect(() => {
-    // B1/AC-015: audience-targeted banners from the admin banner registry; silent for anonymous visitors
-    (async () => {
-      try {
-        const { getSupabase } = await import('@/lib/supabase');
-        const { useAuth } = await import('@/hooks/useAuth');
-        void useAuth;
-        const token = (await (await import('@clerk/clerk-react')).useSession?.()) ?? null;
-        void token;
-        const sb = getSupabase(null);
-        const { data } = await sb.functions.invoke('workspace-api', {
-          body: {},
-        });
-        void data;
-      } catch { /* anonymous: no banner */ }
-      try {
-        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/workspace-api?action=banner.list`, {
-          headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string },
-        });
-        if (res.ok) {
-          const j = await res.json();
-          setBanners((j.banners ?? []).slice(0, 1));
-        }
-      } catch { /* banners optional */ }
-    })();
+    // B1/AC-015: public banner strip from the admin banner registry (optional, silent on failure)
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/workspace-api?action=banner.public`, {
+      headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string },
+    }).then(r => r.ok ? r.json() : null)
+      .then(j => setBanners((j?.banners ?? []).slice(0, 1)))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
