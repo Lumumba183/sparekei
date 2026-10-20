@@ -35,6 +35,14 @@ const s = (v: any, n = 200) => (v ?? '').toString().slice(0, n);
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   try {
+    const urlEarly = new URL(req.url);
+    if (urlEarly.searchParams.get('action') === 'banner.public') {
+      const db0 = supabaseAdmin();
+      const now0 = new Date().toISOString();
+      const { data: pub } = await db0.from('site_banners').select('title, body').eq('active', true).eq('audience', 'all')
+        .or(`starts_at.is.null,starts_at.lte.${now0}`).or(`ends_at.is.null,ends_at.gte.${now0}`).limit(1);
+      return Response.json({ banners: pub ?? [] }, { headers: cors });
+    }
     const user = await requireUser(req);
     const db = supabaseAdmin();
     const url = new URL(req.url);
