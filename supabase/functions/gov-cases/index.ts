@@ -4,7 +4,7 @@
 // Evidence classes stay distinct: owner_declared | submitted | technician_check |
 // authority_verified (never auto-granted) | synthetic.
 // "READY_FOR_PRESENTATION" is assistance readiness — NEVER an official inspection pass.
-import { cors, supabaseAdmin, HttpError } from '../_shared/ai.ts';
+import { cors, supabaseAdmin, HttpError } from '../_shared/core.ts';
 
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['OPEN', 'CLOSED'],
@@ -15,17 +15,6 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   CLOSED: [],
 };
 
-async function requireUser(req: Request) {
-  const token = req.headers.get('Authorization')?.replace('Bearer ', '') ?? '';
-  if (!token) throw new HttpError(401, 'Missing authorization');
-  const { createClient } = await import('jsr:@supabase/supabase-js@2');
-  const anon = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
-  const { data: me } = await anon.from('app_users').select('id, role, full_name').limit(1);
-  if (!me?.[0]) throw new HttpError(401, 'Invalid session');
-  return me[0] as { id: string; role: string; full_name: string };
-}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
