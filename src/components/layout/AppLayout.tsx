@@ -8,7 +8,7 @@ import {
   Settings, LogOut, ChevronLeft, ChevronRight, Bell,
   Menu, Shield, BrainCircuit, Truck, BarChart3, Users,
   Store, Package, Banknote, HeartPulse, ShieldCheck,
-  Sparkles, MapPin, Search, FileText, Eye, UserPlus, Building2, CreditCard, GraduationCap } from 'lucide-react';
+  Sparkles, MapPin, Search, FileText, Eye, UserPlus, Building2, CreditCard, GraduationCap, Activity } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -46,6 +46,7 @@ const navItems: NavItem[] = [
   { label: 'Provider Hub', icon: Building2, path: '/provider', roles: ['mechanic', 'service_node_operator', 'vendor', 'wholesaler', 'manufacturer', 'bodyshop', 'detailer', 'solo_workshop', 'admin'] },
   { label: 'Payment Sandbox', icon: CreditCard, path: '/payments', roles: ['owner', 'vendor', 'wholesaler', 'admin'] },
   { label: 'Academy', icon: GraduationCap, path: '/academy', roles: ['owner', 'mechanic', 'service_node_operator', 'vendor', 'wholesaler', 'manufacturer', 'fleet_manager', 'admin'] },
+  { label: 'My Activity', icon: Activity, path: '/my-activity', roles: ['owner', 'mechanic', 'service_node_operator', 'vendor', 'fleet_manager', 'admin'] },
   { label: 'Analytics', icon: BarChart3, path: '/analytics', roles: ['vendor', 'wholesaler', 'manufacturer', 'admin'] },
   { label: 'Users', icon: Users, path: '/users', roles: ['admin'] },
   { label: 'Cities', icon: MapPin, path: '/cities', roles: ['admin'] },
