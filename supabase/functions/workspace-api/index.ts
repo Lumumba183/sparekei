@@ -865,6 +865,54 @@ Deno.serve(async (req) => {
       await audit(user, "pilot.tag", "founding_members", body.user_id, { cohort: fm.cohort });
       return Response.json({ founding_member: fm, terms: "charge-free pilot; no auto-charge on expiry (AC-008)" }, { headers: cors });
     }
+
+    // ============ TRACK 1: CROSS-DASHBOARD ACTIVITY (owner/mechanic/admin) ============
+    if (action === "activity.mine") {
+      const [{ data: asCustomer }, { data: memberships }, { data: payments }, { data: reviews }, { data: notifs }, { data: vehicles }] = await Promise.all([
+        db.from("bookings").select("id, state, scheduled_at, quote, created_at, vehicles(make, model, registration)").eq("customer_id", user.id).order("created_at", { ascending: false }).limit(25),
+        db.from("organization_members").select("org_id, role").eq("user_id", user.id),
+        db.from("payment_intents").select("id, amount, currency, state, reference, created_at").eq("customer_id", user.id).order("created_at", { ascending: false }).limit(25),
+        db.from("reviews").select("id, rating, comment, created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(25),
+        db.from("notifications").select("id, title, body, read, created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(25),
+        db.from("vehicles").select("id, make, model, registration").eq("owner_id", user.id),
+      ]);
+      const orgIds = (memberships ?? []).map((m: any) => m.org_id);
+      let providerBookings: any[] = [];
+      if (orgIds.length) {
+        const { data: pb } = await db.from("bookings")
+          .select("id, state, scheduled_at, quote, created_at, vehicles(make, model, registration)")
+          .in("provider_org_id", orgIds).order("created_at", { ascending: false }).limit(25);
+        providerBookings = pb ?? [];
+      }
+      const vehIds = (vehicles ?? []).map((v: any) => v.id);
+      let passport: any[] = [];
+      if (vehIds.length) {
+        const { data: stamps } = await db.from("passport_stamps").select("vehicle_id, title, description, mileage_km, verified, stamped_at").in("vehicle_id", vehIds).order("stamped_at", { ascending: false }).limit(50);
+        passport = stamps ?? [];
+      }
+      return Response.json({
+        bookings_as_customer: asCustomer ?? [], bookings_for_my_orgs: providerBookings,
+        payments: payments ?? [], reviews: reviews ?? [], notifications: notifs ?? [],
+        vehicles: vehicles ?? [], passport_stamps: passport,
+        source_note: "all tables live; sample-labelled where seeded",
+      }, { headers: cors });
+    }
+
+    // ============ TRACK 1: ADMIN OPERATIONS VIEWER (read-only, whitelisted) ============
+    if (action === "admin.table") {
+      requireAdmin(user);
+      const allowed = ["app_users", "organizations", "organization_members", "provider_capabilities", "canonical_products", "seller_offers", "bookings", "payment_intents", "payment_providers", "subscriptions", "entitlement_grants", "familiarisation_windows", "funnel_events", "audit_events", "gov_cases", "concierge_conversations", "courses", "enrollments", "credentials", "founding_members", "community_posts", "site_banners", "distribution_links", "inventory_items", "inventory_movements", "vehicles", "passport_stamps", "service_orders", "rfq_requests", "reviews", "notifications", "question_banks", "exam_attempts", "practical_assessments", "capability_verifications", "branches", "plans"];
+      const table = s(body.table ?? url.searchParams.get("table"), 60);
+      if (!allowed.includes(table)) throw new HttpError(403, "Table not whitelisted for the operations viewer");
+      const rows = await db.from(table).select("*").order("created_at", { ascending: false }).limit(50)
+        .then((r: any) => r).catch(async () => {
+          const r2 = await db.from(table).select("*").limit(50);
+          return r2;
+        });
+      if (rows.error) throw new HttpError(500, rows.error.message);
+      return Response.json({ table, rows: rows.data ?? [], count_returned: (rows.data ?? []).length, provenance: "read-only; row cap 50; ordering by created_at where present" }, { headers: cors });
+    }
+
     throw new HttpError(400, 'Unknown action: ' + action);
   } catch (e) {
     const status = e instanceof HttpError ? e.status : 500;
