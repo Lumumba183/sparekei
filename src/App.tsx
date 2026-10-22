@@ -9,6 +9,8 @@ import ProviderHubPage from '@/pages/ProviderHubPage';
 import PaymentSandboxPage from '@/pages/PaymentSandboxPage';
 import AcademyPage from '@/pages/AcademyPage';
 import OffersBrowsePage from '@/pages/OffersBrowsePage';
+import MyActivityPage from '@/pages/MyActivityPage';
+import AdminOpsPage from '@/pages/AdminOpsPage';
 import AppLayout from '@/components/layout/AppLayout';
 
 // Public Pages
@@ -124,7 +126,9 @@ function AppRoutes() {
       <Route path="/provider" element={<ProtectedRoute><ProviderHubPage /></ProtectedRoute>} />
       <Route path="/payments" element={<ProtectedRoute><PaymentSandboxPage />
       <Route path="/academy" element={<ProtectedRoute><AcademyPage />
-      <Route path="/offers" element={<OffersBrowsePage />} /></ProtectedRoute>} /></ProtectedRoute>} /></ProtectedRoute>} />
+      <Route path="/offers" element={<OffersBrowsePage />
+      <Route path="/my-activity" element={<ProtectedRoute><MyActivityPage /></ProtectedRoute>} />
+      <Route path="/admin/ops" element={<ProtectedRoute allowedRoles={['admin']}><AdminOpsPage /></ProtectedRoute>} />} /></ProtectedRoute>} /></ProtectedRoute>} /></ProtectedRoute>} />
       <Route path="/cart" element={<ProtectedRoute><CartPage /></ProtectedRoute>} />
       <Route path="/rfq" element={<ProtectedRoute allowedRoles={['vendor', 'wholesaler', 'manufacturer']}><RFQPage /></ProtectedRoute>} />
       <Route path="/symptom-search" element={<ProtectedRoute allowedRoles={['owner', 'mechanic', 'fleet_manager']}><SymptomSearchPage /></ProtectedRoute>} />
