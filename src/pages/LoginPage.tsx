@@ -1,10 +1,17 @@
-import { useState } from 'react';
-import { useSignIn } from '@clerk/clerk-react';
+import { useState, useEffect } from 'react';
+import { useSignIn, useSession } from '@clerk/clerk-react';
 import { Car, Loader2, Mail, Lock, AlertCircle } from 'lucide-react';
 
 // Custom-flow sign in (no hosted iframe): full control, works everywhere.
 export default function LoginPage() {
   const { signIn, setActive, isLoaded } = useSignIn();
+  const { session, isLoaded: sessionLoaded } = useSession();
+
+  // Already signed in (e.g., returning via a bookmark or after a stale-tab sign-in):
+  // skip the form entirely and continue to the dashboard.
+  useEffect(() => {
+    if (sessionLoaded && session) window.location.href = '/dashboard';
+  }, [sessionLoaded, session]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [needPassword, setNeedPassword] = useState(false);
@@ -27,7 +34,14 @@ export default function LoginPage() {
       else setError('Password sign-in is not available for this account. Use Google or contact support.');
     } catch (err: any) {
       console.log('[authflow] signIn.create error:', err?.errors || err);
-      setError(err?.errors?.[0]?.message || 'Sign-in failed. Check your email.');
+      const e0 = err?.errors?.[0];
+      if (e0 && (e0.code === 'session_already_exists' || /session already exists/i.test(e0.message ?? ''))) {
+        // Clerk already holds a live session for this account — continue instead of blocking.
+        if (session) { window.location.href = '/dashboard'; return; }
+        window.location.reload(); // let Clerk rehydrate the existing session
+        return;
+      }
+      setError(e0?.long_message || e0?.message || 'Sign-in failed. Check your email and try again.');
     } finally { setBusy(false); }
   };
 
