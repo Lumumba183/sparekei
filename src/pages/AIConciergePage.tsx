@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Send, Bot, User, Sparkles, Wrench, Car, ShieldCheck, FileCheck2 } from 'lucide-react';
 import { useSession } from '@clerk/clerk-react';
 import { Card } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -56,6 +57,13 @@ export default function AIConciergePage() {
   const [error, setError] = useState<string | null>(null);
   const [provider, setProvider] = useState('OpenAI GPT-4.1-mini via Sparekei Concierge');
   const [intent, setIntent] = useState<Intent>('general');
+  const [persona, setPersona] = useState<string>(role);
+  const PERSONAS = [
+    { key: 'owner', label: 'Vehicle Owner' }, { key: 'mechanic', label: 'Mechanic' },
+    { key: 'service_node_operator', label: 'Garage' }, { key: 'vendor', label: 'Vendor' },
+    { key: 'wholesaler', label: 'Wholesaler' }, { key: 'manufacturer', label: 'Manufacturer' },
+    { key: 'fleet_manager', label: 'Fleet' }, { key: 'admin', label: 'Admin' },
+  ];
   const [evidence, setEvidence] = useState<PartEvidence>({});
   const greeted = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -93,7 +101,7 @@ export default function AIConciergePage() {
       const token = (await session?.getToken({ template: 'supabase' })) ?? null;
       const history = messages.slice(-10).map(m => ({ role: m.role, content: m.content }));
       const { data, error: fnErr } = await getSupabase(token).functions.invoke('ai-concierge', {
-        body: { message: text, persona: role, intent: detected, history, evidence },
+        body: { message: text, persona, intent: detected, history, evidence },
       });
       if (fnErr) throw new Error(fnErr.message ?? 'Concierge request failed');
       if (data?.provider) setProvider(data.provider);
@@ -130,7 +138,11 @@ export default function AIConciergePage() {
           <h1 className="text-xl font-bold tracking-tight">AI Concierge</h1>
           <p className="text-xs text-muted-foreground">{provider}</p>
         </div>
-        <Badge variant="secondary" className="ml-auto text-[10px]">{INTENT_LABELS[intent]}</Badge>
+        <Select value={persona} onValueChange={setPersona}>
+          <SelectTrigger className="h-7 w-[150px] text-[11px] ml-auto"><SelectValue /></SelectTrigger>
+          <SelectContent>{PERSONAS.map(p => <SelectItem key={p.key} value={p.key}>{p.label}</SelectItem>)}</SelectContent>
+        </Select>
+        <Badge variant="secondary" className="text-[10px]">{INTENT_LABELS[intent]}</Badge>
       </div>
 
       <Card className="p-4 h-[52vh] overflow-y-auto space-y-3 bg-muted/20">
