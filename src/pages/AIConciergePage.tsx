@@ -204,6 +204,9 @@ export default function AIConciergePage() {
         The Concierge advises and routes you to the real workflows. It never completes purchases, bookings, payments,
         inspections, or government submissions on its own.
       </p>
+      <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+        <FileText className="h-3 w-3" /> Every conversation is logged with its persona, intent and evidence context for quality review (P10 provenance).
+      </p>
     </div>
   );
 }
