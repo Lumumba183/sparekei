@@ -1596,6 +1596,83 @@ Deno.serve(async (req) => {
       return Response.json({ booking: b, rule: "PASSED/FAILED may only be recorded from official result evidence — never predicted." }, { headers: cors });
     }
 
+
+    // ==================== WORKSPACE HUB: one-call summary for all Part-2 module UIs ====================
+    if (action === "hub.summary") {
+      const { data: memberships } = await db.from("organization_members").select("org_id, role").eq("user_id", user.id);
+      const orgIds = (memberships ?? []).map((m: any) => m.org_id);
+      const [{ data: myVehicles }, { data: myRequests }, { data: myOffersOrg }] = await Promise.all([
+        db.from("vehicles").select("id").eq("owner_id", user.id),
+        db.from("service_requests").select("*, request_offers(*)").eq("customer_id", user.id).order("created_at", { ascending: false }).limit(20),
+        orgIds.length ? db.from("service_requests").select("*, request_offers(*)").in("status", ["OPEN", "NEGOTIATING"]).order("created_at", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
+      ]);
+      const vehIds = (myVehicles ?? []).map((v: any) => v.id);
+      const orgBookings = orgIds.length ? (await db.from("bookings").select("id").in("provider_org_id", orgIds)).data ?? [] : [];
+      const bookingIds = orgBookings.map((b: any) => b.id);
+      const [
+        tasks, signoffs, warranties, comebacks,
+        drivers, inspections, fuel, anomalies, workorders,
+        mySpaces, spacePosts, mentorships, opps, myApplications,
+        founding, pointsRows, tiers,
+        markets, regionalStates, campaigns, docs,
+        pos, shipments, returns,
+        recs, achRules, achMine, achOpps,
+        govSvcs, govApps, govBookings,
+      ] = await Promise.all([
+        bookingIds.length ? db.from("job_tasks").select("*").in("booking_id", bookingIds).order("created_at", { ascending: false }).limit(30) : Promise.resolve({ data: [] }),
+        bookingIds.length ? db.from("quality_signoffs").select("*").in("booking_id", bookingIds).order("created_at", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
+        orgIds.length ? db.from("warranty_claims").select("*").in("org_id", orgIds).order("created_at", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
+        bookingIds.length ? db.from("comebacks").select("*").in("original_booking_id", bookingIds).limit(20) : Promise.resolve({ data: [] }),
+        orgIds.length ? db.from("fleet_drivers").select("*").in("org_id", orgIds) : Promise.resolve({ data: [] }),
+        vehIds.length ? db.from("fleet_inspections").select("*").in("vehicle_id", vehIds).order("created_at", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
+        vehIds.length ? db.from("fuel_events").select("*").in("vehicle_id", vehIds).order("created_at", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
+        vehIds.length ? db.from("anomaly_cases").select("*").in("vehicle_id", vehIds).order("created_at", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
+        orgIds.length ? db.from("work_orders").select("*").in("fleet_org_id", orgIds).order("created_at", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
+        db.from("spaces").select("*, space_members!inner(user_id)").eq("space_members.user_id", user.id).limit(20),
+        db.from("community_posts").select("*").eq("author_id", user.id).order("created_at", { ascending: false }).limit(10),
+        db.from("mentorship_requests").select("*").eq("requester_id", user.id).order("created_at", { ascending: false }).limit(10),
+        db.from("opportunities").select("*").eq("status", "PUBLISHED").order("created_at", { ascending: false }).limit(20),
+        db.from("opportunity_applications").select("*").eq("applicant_id", user.id).limit(20),
+        db.from("founding_members").select("*").eq("user_id", user.id).maybeSingle(),
+        db.from("points_ledger").select("delta, status").eq("member_id", user.id).eq("status", "POSTED"),
+        db.from("tier_rules").select("*").order("min_points"),
+        orgIds.length ? db.from("org_markets").select("*").in("org_id", orgIds) : Promise.resolve({ data: [] }),
+        db.from("regional_product_states").select("*, org_markets(org_id, country)").order("updated_at", { ascending: false }).limit(30),
+        orgIds.length ? db.from("campaigns").select("*").in("org_id", orgIds).order("created_at", { ascending: false }).limit(10) : Promise.resolve({ data: [] }),
+        orgIds.length ? db.from("tech_documents").select("*").in("product_id", (await db.from("canonical_products").select("id").limit(50)).data?.map((p: any) => p.id) ?? []).order("created_at", { ascending: false }).limit(10) : Promise.resolve({ data: [] }),
+        orgIds.length ? db.from("purchase_orders").select("*").in("org_id", orgIds).order("created_at", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
+        db.from("shipments").select("*").or(orgIds.length ? `from_org_id.in.(${orgIds.join(",")}),to_org_id.in.(${orgIds.join(",")})` : "id.eq.00000000-0000-0000-0000-000000000000").order("created_at", { ascending: false }).limit(20),
+        db.from("return_cases").select("*").order("created_at", { ascending: false }).limit(10),
+        orgIds.length ? db.from("recommendations").select("*").in("org_id", orgIds).order("created_at", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
+        db.from("achievement_rules").select("*").eq("role", user.role).eq("approved", true),
+        db.from("stakeholder_achievements").select("*").eq("user_id", user.id),
+        db.from("opportunities").select("*").eq("source", "achievement").eq("status", "PUBLISHED").limit(10),
+        db.from("gov_services").select("*"),
+        db.from("gov_applications").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(10),
+        db.from("gov_inspection_bookings").select("*").order("created_at", { ascending: false }).limit(10),
+      ]);
+      const pointsBalance = (pointsRows.data ?? []).reduce((a: number, r: any) => a + r.delta, 0);
+      const tier = [...(tiers.data ?? [])].reverse().find((t: any) => pointsBalance >= t.min_points)?.tier ?? "Silver";
+      const control = user.role === "admin" ? {
+        agents: (await db.from("agents").select("*").order("created_at", { ascending: false }).limit(20)).data ?? [],
+        decisions: (await db.from("decisions").select("*").order("created_at", { ascending: false }).limit(20)).data ?? [],
+        delegations: (await db.from("delegations").select("*").or(`grantor_id.eq.${user.id},grantee_id.eq.${user.id}`).limit(20)).data ?? [],
+      } : null;
+      return Response.json({
+        orgs: orgIds, role: user.role,
+        requests_mine: myRequests?.data ?? [], requests_open: (myOffersOrg as any)?.data ?? [],
+        tasks: tasks.data ?? [], signoffs: signoffs.data ?? [], warranties: warranties.data ?? [], comebacks: comebacks.data ?? [],
+        drivers: drivers.data ?? [], inspections: inspections.data ?? [], fuel: fuel.data ?? [], anomalies: anomalies.data ?? [], work_orders: workorders.data ?? [],
+        spaces: (mySpaces as any)?.data ?? [], my_posts: spacePosts?.data ?? [], mentorships: mentorships?.data ?? [], opportunities: opps?.data ?? [], applications: myApplications?.data ?? [],
+        founding: founding?.data ?? null, points: pointsBalance, tier, tiers: tiers.data ?? [],
+        markets: markets.data ?? [], regional_states: regionalStates.data ?? [], campaigns: campaigns.data ?? [], tech_docs: docs.data ?? [],
+        purchase_orders: pos.data ?? [], shipments: shipments.data ?? [], returns: returns.data ?? [],
+        recommendations: recs.data ?? [], ach_rules: achRules.data ?? [], achievement: achMine?.data ?? [], ach_opportunities: achOpps?.data ?? [],
+        gov_services: govSvcs.data ?? [], gov_applications: govApps.data ?? [], gov_bookings: govBookings.data ?? [],
+        control,
+      }, { headers: cors });
+    }
+
     throw new HttpError(400, 'Unknown action: ' + action);
   } catch (e) {
     const status = e instanceof HttpError ? e.status : 500;
