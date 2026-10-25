@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from '@clerk/clerk-react';
-import { Building2, Plus, ShieldCheck, Package, CalendarClock } from 'lucide-react';
+import { Building2, Plus, ShieldCheck, Package, CalendarClock, BadgeCheck, Circle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -70,6 +70,30 @@ export default function ProviderHubPage() {
         </div>
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}
+
+      {(() => {
+        const myOrg = data?.orgs?.[0];
+        if (!myOrg) return null;
+        const checks = [
+          { label: 'Organization profile', ok: !!(myOrg.country && myOrg.name) },
+          { label: 'Markets & brands declared', ok: ((myOrg.markets ?? []).length > 0 || (myOrg.brands ?? []).length > 0) },
+          { label: 'Capability declared', ok: (data?.capabilities ?? []).length > 0 },
+          { label: 'Capability verified', ok: (data?.capabilities ?? []).some((c: any) => ['PLATFORM_CHECKED','PROFESSIONALLY_VERIFIED'].includes(c.status)) },
+          { label: 'First offer published', ok: (data?.offers ?? []).length > 0 || (data?.bookings ?? []).length >= 0 && false },
+        ];
+        const done = checks.filter(c => c.ok).length;
+        return (
+          <Card className="p-4 space-y-1.5">
+            <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" /> READINESS — {done}/{checks.length} ({Math.round(done/checks.length*100)}%)</p>
+            {checks.map(c => (
+              <p key={c.label} className="flex items-center gap-2 text-xs">
+                {c.ok ? <BadgeCheck className="h-3.5 w-3.5 text-emerald-600" /> : <Circle className="h-3.5 w-3.5 text-muted-foreground" />}
+                <span className={c.ok ? '' : 'text-muted-foreground'}>{c.label}</span>
+              </p>
+            ))}
+          </Card>
+        );
+      })()}
 
       <Card className="p-4 space-y-2">
         <p className="text-xs font-semibold text-muted-foreground">ORGANIZATION</p>
