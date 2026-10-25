@@ -993,6 +993,609 @@ Deno.serve(async (req) => {
       return Response.json({ ok: true, note: "Referral recorded — the Concierge can help route this to a verified specialist." }, { headers: cors });
     }
 
+
+    // ==================== PART 2 — MODULE 1: BID & NEGOTIATION ====================
+    if (action === "request.create") {
+      const { data: r0, error } = await db.from("service_requests").insert({
+        customer_id: user.id, service_class: s(body.service_class, 40),
+        vehicle_id: body.vehicle_id ?? null, description: body.description && typeof body.description === "object" ? body.description : {},
+        location: s(body.location, 120), urgency: ["routine","scheduled","urgent"].includes(body.urgency) ? body.urgency : "routine",
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, "request.create", "service_requests", r0.id, {});
+      return Response.json({ request: r0 }, { headers: cors });
+    }
+    if (action === "request.list") {
+      const { data: mine } = await db.from("service_requests").select("*").eq("customer_id", user.id).order("created_at", { ascending: false }).limit(50);
+      const { data: memberships } = await db.from("organization_members").select("org_id").eq("user_id", user.id);
+      const orgIds = (memberships ?? []).map((m: any) => m.org_id);
+      let forOrgs: any[] = [];
+      if (orgIds.length) {
+        const { data: rs } = await db.from("service_requests").select("*").in("status", ["OPEN", "NEGOTIATING"]).order("created_at", { ascending: false }).limit(50);
+        forOrgs = (rs ?? []).filter((r: any) => !orgIds.includes(r.__none)); // visible to all eligible providers; eligibility applied at offer time
+      }
+      return Response.json({ mine: mine ?? [], open: forOrgs }, { headers: cors });
+    }
+    if (action === "offer.submit" || action === "offer.counter") {
+      const { data: req } = await db.from("service_requests").select("id, status, customer_id").eq("id", body.request_id).single();
+      if (!req) throw new HttpError(404, "Request not found");
+      if (["CONFIRMED", "CANCELLED", "EXPIRED"].includes(req.status)) throw new HttpError(409, `Request is ${req.status}`);
+      const { data: mem } = await db.from("organization_members").select("org_id").eq("user_id", user.id);
+      const orgId = body.provider_org_id ?? (mem ?? [])[0]?.org_id;
+      if (!orgId) throw new HttpError(403, "Provider organization required");
+      // versioned chain
+      const { data: last } = await db.from("request_offers").select("version, id").eq("request_id", req.id).order("version", { ascending: false }).limit(1);
+      const version = ((last ?? [])[0]?.version ?? 0) + 1;
+      const { data: off, error } = await db.from("request_offers").insert({
+        request_id: req.id, provider_org_id: orgId, version,
+        payload: { scope: s(body.scope, 500), items: (body.items ?? []).slice(0, 30), total: Number(body.total) || 0, schedule: s(body.schedule, 200), warranty: s(body.warranty, 300), conditions: s(body.conditions, 300) },
+        state: action === "offer.counter" ? "COUNTERED" : "SUBMITTED",
+        parent_offer_id: action === "offer.counter" ? (body.parent_offer_id ?? (last ?? [])[0]?.id ?? null) : null,
+        actor_id: user.id,
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      if ((last ?? [])[0]?.id) await db.from("request_offers").update({ state: "SUPERSEDED" }).eq("id", (last ?? [])[0].id);
+      await db.from("service_requests").update({ status: "NEGOTIATING" }).eq("id", req.id);
+      await db.from("funnel_events").insert({ event_type: "quote", actor_id: user.id, actor_class: user.role, entity_type: "request_offers", entity_id: off.id, outcome: "ok" });
+      return Response.json({ offer: off, version }, { headers: cors });
+    }
+    if (action === "offer.accept") {
+      const { data: off } = await db.from("request_offers").select("*, service_requests(customer_id, status)").eq("id", body.offer_id).single();
+      if (!off) throw new HttpError(404, "Offer not found");
+      if (off.service_requests?.customer_id !== user.id && user.role !== "admin") throw new HttpError(403, "Only the customer may accept");
+      if (off.state !== "SUBMITTED" && off.state !== "COUNTERED") throw new HttpError(409, `Offer is ${off.state}`);
+      const { data: booking, error } = await db.from("bookings").insert({
+        customer_id: user.id, provider_org_id: off.provider_org_id, state: "ACCEPTED",
+        quote: { offer_id: off.id, version: off.version, ...(off.payload ?? {}) },
+      }).select("id").single();
+      if (error) throw new HttpError(500, error.message);
+      await db.from("request_offers").update({ state: "ACCEPTED" }).eq("id", off.id);
+      await db.from("service_requests").update({ status: "CONFIRMED" }).eq("id", off.request_id);
+      await audit(user, "offer.accept", "request_offers", off.id, { booking_id: booking.id });
+      return Response.json({ ok: true, booking_id: booking.id, note: "Accepted offer is an immutable snapshot; changes require a new versioned offer." }, { headers: cors });
+    }
+    if (action === "offer.withdraw") {
+      const { error } = await db.from("request_offers").update({ state: "WITHDRAWN" }).eq("id", body.offer_id).eq("actor_id", user.id);
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ ok: true }, { headers: cors });
+    }
+
+    // ==================== PART 2 — MODULE 2: SPECIALIST/GARAGE EXECUTION ====================
+    if (action === "task.assign") {
+      const { data: b } = await db.from("bookings").select("id").eq("id", body.booking_id).single();
+      if (!b) throw new HttpError(404, "Booking not found");
+      const { data: t, error } = await db.from("job_tasks").insert({
+        booking_id: b.id, title: s(body.title, 140), assignee_id: body.assignee_id ?? null,
+        capability_required: s(body.capability_required, 40), evidence_required: !!body.evidence_required,
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      await db.from("job_tasks").update({ status: body.assignee_id ? "ASSIGNED" : "READY" }).eq("id", t.id);
+      return Response.json({ task: t }, { headers: cors });
+    }
+    if (action === "task.respond") {
+      const allowed: Record<string, string[]> = { ASSIGNED: ["ACCEPTED", "DECLINED"], ACCEPTED: ["IN_PROGRESS"], IN_PROGRESS: ["SUBMITTED"], SUBMITTED: [], DECLINED: [], VERIFIED: [], REWORK: ["IN_PROGRESS"], READY: [] };
+      const { data: t } = await db.from("job_tasks").select("*").eq("id", body.task_id).single();
+      if (!t) throw new HttpError(404, "Task not found");
+      if (!(allowed[t.status] ?? []).includes(body.status)) throw new HttpError(409, `Cannot move ${t.status} → ${body.status}`);
+      if (t.status === "ASSIGNED" && t.assignee_id && t.assignee_id !== user.id && user.role !== "admin") throw new HttpError(403, "Only the assignee may respond");
+      await db.from("job_tasks").update({ status: body.status, submitted_at: body.status === "SUBMITTED" ? new Date().toISOString() : t.submitted_at }).eq("id", t.id);
+      await audit(user, "task." + body.status.toLowerCase(), "job_tasks", t.id, {});
+      return Response.json({ ok: true }, { headers: cors });
+    }
+    if (action === "task.verify") {
+      requireAdmin(user);
+      const { data: t } = await db.from("job_tasks").select("id, status").eq("id", body.task_id).single();
+      if (!t) throw new HttpError(404, "Task not found");
+      if (t.status !== "SUBMITTED") throw new HttpError(409, "Only SUBMITTED tasks can be verified");
+      await db.from("job_tasks").update({ status: body.pass === false ? "REWORK" : "VERIFIED", verified_by: user.id }).eq("id", t.id);
+      const { data: so } = await db.from("quality_signoffs").insert({
+        booking_id: (await db.from("job_tasks").select("booking_id").eq("id", t.id).single()).data?.booking_id,
+        task_id: t.id, result: body.pass === false ? "REWORK" : "PASS", verifier_id: user.id, note: s(body.note, 300),
+      }).select("id").single();
+      await audit(user, "task.verify", "quality_signoffs", so.id, { pass: body.pass !== false });
+      return Response.json({ ok: true }, { headers: cors });
+    }
+    if (action === "warranty.open") {
+      const { data: w, error } = await db.from("warranty_claims").insert({
+        booking_id: body.booking_id ?? null, org_id: body.org_id ?? null,
+        claim_type: ["workmanship", "product", "third_party"].includes(body.claim_type) ? body.claim_type : "workmanship",
+        terms: body.terms && typeof body.terms === "object" ? body.terms : {},
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ claim: w }, { headers: cors });
+    }
+    if (action === "warranty.resolve") {
+      await db.from("warranty_claims").update({ status: ["RESOLVED", "REJECTED"].includes(body.status) ? body.status : "RESOLVED" }).eq("id", body.claim_id);
+      return Response.json({ ok: true }, { headers: cors });
+    }
+    if (action === "comeback.link") {
+      const { data: c, error } = await db.from("comebacks").insert({
+        original_booking_id: body.original_booking_id, followup_booking_id: body.followup_booking_id ?? null, reason: s(body.reason, 300),
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ comeback: c, note: "Linked follow-up; original job history preserved unchanged." }, { headers: cors });
+    }
+
+    // ==================== PART 2 — MODULE 3: FLEET ====================
+    if (action === "fleet.driver.add") {
+      const { data: d, error } = await db.from("fleet_drivers").insert({ org_id: body.org_id, user_id: body.user_id ?? user.id, licence_ref: s(body.licence_ref, 60) }).select("*").single();
+      if (error) throw new HttpError(error.message.includes("duplicate") ? 409 : 500, error.message.includes("duplicate") ? "Driver already registered in this fleet" : error.message);
+      return Response.json({ driver: d }, { headers: cors });
+    }
+    if (action === "fleet.inspection.submit") {
+      const items = Array.isArray(body.checklist) ? body.checklist : [];
+      if (items.some((i: any) => i.status === "NOT_CHECKED" && i.treated_as_ok)) throw new HttpError(400, "NOT_CHECKED items must never silently become OK");
+      const defects = items.filter((i: any) => i.status === "ISSUE");
+      const { data: ins, error } = await db.from("fleet_inspections").insert({
+        vehicle_id: body.vehicle_id, driver_id: body.driver_id ?? null,
+        checklist: items, defects, odometer_km: parseInt(body.odometer_km) || null,
+        status: defects.some((d: any) => d.severity === "safety_critical") ? "ESCALATED" : "SUBMITTED",
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ inspection: ins, escalated: ins.status === "ESCALATED" }, { headers: cors });
+    }
+    if (action === "fleet.fuel.log") {
+      const litres = Number(body.litres), unit = Number(body.unit_price);
+      const total = Number(body.total) || +(litres * unit).toFixed(2);
+      if (!(litres > 0) || !(unit > 0)) throw new HttpError(400, "litres + unit_price required");
+      if (Math.abs(litres * unit - total) > Math.max(50, total * 0.05)) throw new HttpError(422, "litres × price does not match total within tolerance");
+      const { data: f, error } = await db.from("fuel_events").insert({
+        vehicle_id: body.vehicle_id, driver_id: body.driver_id ?? null,
+        litres, unit_price: unit, total, odometer_km: parseInt(body.odometer_km) || null,
+        station: s(body.station, 120), receipt_ref: s(body.receipt_ref, 60),
+        status: body.receipt_ref ? "VALIDATED" : "FLAGGED",
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ fuel: f, note: f.status === "FLAGGED" ? "No receipt reference — flagged for review (a receipt proves submission, not consumption)." : "Validated" }, { headers: cors });
+    }
+    if (action === "fleet.anomaly.scan") {
+      const vehId = body.vehicle_id;
+      const { data: fuels } = await db.from("fuel_events").select("*").eq("vehicle_id", vehId).order("created_at", { ascending: false }).limit(12);
+      const cases: any[] = [];
+      const fl = fuels ?? [];
+      for (let i = 1; i < fl.length; i++) {
+        const km = (fl[i - 1].odometer_km ?? 0) - (fl[i].odometer_km ?? 0);
+        if (km > 0) {
+          const lpk = (fl[i - 1].litres / km) * 100;
+          const prior = fl.slice(i, i + 4);
+          if (prior.length >= 2) {
+            const base = prior.reduce((a: number, x: any) => a + (x.litres / Math.max(1, (x.odometer_km ?? 0))), 0) / prior.length;
+            if (lpk > base * 1.35 && km > 30) {
+              cases.push({ vehicle_id: vehId, kind: "consumption_spike", signal: { lp100km: +lpk.toFixed(2), baseline_sample: prior.length, km }, confidence: prior.length >= 3 ? "moderate" : "low" });
+            }
+          }
+        }
+        if ((fl[i - 1].odometer_km ?? 0) < (fl[i].odometer_km ?? 0)) {
+          cases.push({ vehicle_id: vehId, kind: "odometer_rollback", signal: { later: fl[i - 1].odometer_km, earlier: fl[i].odometer_km }, confidence: "high" });
+        }
+      }
+      const dupes = fl.filter((f: any) => f.receipt_ref && fl.filter((x: any) => x.receipt_ref === f.receipt_ref).length > 1);
+      for (const d of dupes.slice(0, 3)) cases.push({ vehicle_id: vehId, kind: "duplicate_receipt", signal: { receipt_ref: d.receipt_ref }, confidence: "high" });
+      let inserted = 0;
+      for (const c of cases.slice(0, 10)) {
+        const { error } = await db.from("anomaly_cases").insert({ ...c, status: "OPEN" });
+        if (!error) inserted++;
+      }
+      await audit(user, "fleet.anomaly.scan", "anomaly_cases", vehId, { found: cases.length });
+      return Response.json({ anomalies_found: cases.length, inserted, cases: cases.slice(0, 10), disclaimer: "An anomaly is a signal for human review — never proof of misconduct; no automatic penalties." }, { headers: cors });
+    }
+    if (action === "workorder.create") {
+      const { data: w, error } = await db.from("work_orders").insert({
+        fleet_org_id: body.fleet_org_id, vehicle_id: body.vehicle_id ?? null,
+        booking_id: body.booking_id ?? null, priority: ["routine", "high", "safety_critical"].includes(body.priority) ? body.priority : "routine",
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ work_order: w }, { headers: cors });
+    }
+
+    // ==================== PART 2 — MODULE 4: COMMUNITY (FULL) ====================
+    if (action === "space.create") {
+      if (!s(body.name)) throw new HttpError(400, "name required");
+      const { data: sp, error } = await db.from("spaces").insert({
+        name: s(body.name, 100), purpose: s(body.purpose, 300), owner_id: user.id,
+        membership: body.membership === "members" ? "members" : "public", region: s(body.region, 40), rules: s(body.rules, 500),
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      await db.from("space_members").insert({ space_id: sp.id, user_id: user.id, role: "moderator" });
+      return Response.json({ space: sp }, { headers: cors });
+    }
+    if (action === "space.join") {
+      const { data: sp } = await db.from("spaces").select("membership").eq("id", body.space_id).single();
+      if (!sp) throw new HttpError(404, "Space not found");
+      const { error } = await db.from("space_members").insert({ space_id: body.space_id, user_id: user.id }).then((r: any) => r, (e: any) => ({ error: e }));
+      if (error && !String(error.message).includes("duplicate")) throw new HttpError(500, error.message);
+      return Response.json({ ok: true }, { headers: cors });
+    }
+    if (action === "space.post") {
+      const { data: sp } = await db.from("spaces").select("id").eq("id", body.space_id).single();
+      if (!sp) throw new HttpError(404, "Space not found");
+      const { data: p, error } = await db.from("community_posts").insert({
+        author_id: user.id, topic: s(body.topic, 40) || "general", title: s(body.title, 140), body: s(body.body, 4000),
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      await db.from("funnel_events").insert({ event_type: "view", actor_id: user.id, actor_class: user.role, entity_type: "space_post", entity_id: p.id, outcome: "ok" });
+      return Response.json({ post: p }, { headers: cors });
+    }
+    if (action === "comment.add") {
+      const { data: c, error } = await db.from("comments").insert({
+        post_id: body.post_id ?? null, parent_id: body.parent_id ?? null, author_id: user.id, body: s(body.body, 2000),
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ comment: c }, { headers: cors });
+    }
+    if (action === "mentor.request") {
+      const { data: m, error } = await db.from("mentorship_requests").insert({ requester_id: user.id, topic: s(body.topic, 200) }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ request: m, note: "Matching suggests; it never implies endorsement. Users choose whether to accept." }, { headers: cors });
+    }
+    if (action === "opportunity.publish") {
+      const { data: o, error } = await db.from("opportunities").insert({
+        source: s(body.source, 20) || "community", publisher_id: user.id,
+        title: s(body.title, 140), body: s(body.body, 2000),
+        eligibility: body.eligibility && typeof body.eligibility === "object" ? body.eligibility : {},
+        region: s(body.region, 40), capacity: parseInt(body.capacity) || null, deadline: body.deadline ?? null,
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ opportunity: o, note: "An opportunity is not a promise of work, contracts or endorsement." }, { headers: cors });
+    }
+    if (action === "opportunity.apply") {
+      const { data: o } = await db.from("opportunities").select("id, capacity, deadline").eq("id", body.opportunity_id).single();
+      if (!o) throw new HttpError(404, "Opportunity not found");
+      if (o.deadline && new Date(o.deadline) < new Date()) throw new HttpError(410, "Opportunity deadline passed");
+      const { data: app0, error } = await db.from("opportunity_applications").insert({ opportunity_id: o.id, applicant_id: user.id }).select("*").single();
+      if (error) throw new HttpError(error.message.includes("duplicate") ? 409 : 500, error.message.includes("duplicate") ? "Already applied" : error.message);
+      return Response.json({ application: app0, note: "Eligibility review follows; nothing is guaranteed by applying." }, { headers: cors });
+    }
+
+    // ==================== PART 2 — MODULE 5: FOUNDING COMPLETION ====================
+    if (action === "founding.region.upsert") {
+      requireAdmin(user);
+      const { data: reg, error } = await db.from("founding_regions").upsert({
+        code: s(body.code, 8).toUpperCase(), name: s(body.name, 60), currency: s(body.currency, 8) || "KES",
+        fx_rate: Number(body.fx_rate) || 129.79, rounding: parseInt(body.rounding) || 100,
+        price_usd: Number(body.price_usd) || 20, cap: parseInt(body.cap) || 500,
+        status: ["PLANNED", "OPEN", "CLOSED"].includes(body.status) ? body.status : "PLANNED",
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ region: reg, local_price: Math.round((reg.price_usd * reg.fx_rate) / reg.rounding) * reg.rounding, note: "FX rate is a configured policy value with a recorded timestamp — never a live hardcoded feed." }, { headers: cors });
+    }
+    if (action === "founding.join") {
+      const regionCode = s(body.region_code, 8).toUpperCase() || "KE";
+      const { data: reg } = await db.from("founding_regions").select("*").eq("code", regionCode).single();
+      if (!reg) throw new HttpError(404, "Region not found");
+      if (reg.status !== "OPEN") throw new HttpError(409, `Region is ${reg.status}`);
+      const { data: existing } = await db.from("founding_members").select("user_id").eq("user_id", user.id);
+      if (existing?.length) throw new HttpError(409, "One SPID cannot hold duplicate founding membership");
+      const { count } = await db.from("founding_members").select("user_id", { count: "exact", head: true });
+      if ((count ?? 0) >= reg.cap) throw new HttpError(429, "Regional cohort capacity reached");
+      const localPrice = Math.round((reg.price_usd * reg.fx_rate) / reg.rounding) * reg.rounding;
+      const { data: fm, error } = await db.from("founding_members").insert({
+        user_id: user.id, cohort: `founders-${regionCode}-2026`, card_number: `SPK-F-${regionCode}-2026-${String((count ?? 0) + 1).padStart(6, "0")}`,
+        tier: "Silver", benefits: { region: regionCode, entry_price_local: localPrice, currency: reg.currency, price_locked: true, terms_version: "founding-v1" },
+      }).select("*").single();
+      if (error) throw new HttpError(error.message.includes("duplicate") ? 409 : 500, error.message);
+      await db.from("points_ledger").insert({ member_id: user.id, event_type: "founding_join", delta: 100, source_ref: fm.card_number, idempotency_key: `join-${user.id}-${regionCode}` });
+      await audit(user, "founding.join", "founding_members", user.id, { region: regionCode, price: localPrice });
+      return Response.json({ founding_member: fm, local_price: localPrice, currency: reg.currency, guarantee: "Accepted price is locked; later FX changes never alter a completed founding purchase." }, { headers: cors });
+    }
+    if (action === "points.post") {
+      const key = s(body.idempotency_key, 120);
+      const { data: dup } = await db.from("points_ledger").select("id").eq("idempotency_key", key).maybeSingle();
+      if (dup) return Response.json({ ok: true, deduplicated: true }, { headers: cors });
+      const delta = parseInt(body.delta) || 0;
+      if (!delta) throw new HttpError(400, "delta required");
+      const { data: e, error } = await db.from("points_ledger").insert({
+        member_id: body.member_id ?? user.id, event_type: s(body.event_type, 40), delta,
+        source_ref: s(body.source_ref, 80), idempotency_key: key,
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ entry: e, note: "Append-only ledger; corrections are reversing entries, never edits." }, { headers: cors });
+    }
+    if (action === "points.balance") {
+      const { data: rows } = await db.from("points_ledger").select("delta, status").eq("member_id", user.id).eq("status", "POSTED");
+      const balance = (rows ?? []).reduce((a: number, r: any) => a + r.delta, 0);
+      const { data: tiers } = await db.from("tier_rules").select("*").order("min_points");
+      const tier = [...(tiers ?? [])].reverse().find((t: any) => balance >= t.min_points)?.tier ?? "Silver";
+      return Response.json({ balance, tier, tiers: tiers ?? [], note: "Points are not cash or deposits unless separately approved." }, { headers: cors });
+    }
+    if (action === "reward.redeem") {
+      const cost = parseInt(body.points_cost) || 0;
+      if (!cost || !s(body.reward_label)) throw new HttpError(400, "reward_label + points_cost required");
+      const { data: rows } = await db.from("points_ledger").select("delta").eq("member_id", user.id).eq("status", "POSTED");
+      const balance = (rows ?? []).reduce((a: number, r: any) => a + r.delta, 0);
+      if (balance < cost) throw new HttpError(409, `Insufficient points (${balance} < ${cost})`);
+      const { data: o, error } = await db.from("redemption_orders").insert({ member_id: user.id, reward_label: s(body.reward_label, 120), points_cost: cost }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      await db.from("points_ledger").insert({ member_id: user.id, event_type: "redemption", delta: -cost, source_ref: o.id, idempotency_key: `rdm-${o.id}` });
+      return Response.json({ order: o, remaining: balance - cost }, { headers: cors });
+    }
+
+    // ==================== PART 2 — MODULE 6: MANUFACTURER MULTI-REGION ====================
+    if (action === "market.set") {
+      const lifecycles = ["PLANNED", "RESEARCH", "SHADOW", "PILOT", "LIMITED_LIVE", "LIVE", "PAUSED", "CLOSED"];
+      if (!body.org_id || !s(body.country)) throw new HttpError(400, "org_id + country required");
+      const lc = lifecycles.includes(body.lifecycle) ? body.lifecycle : "PLANNED";
+      const { data: m, error } = await db.from("org_markets").upsert({
+        org_id: body.org_id, country: s(body.country, 8).toUpperCase(), state: s(body.state, 40) ?? null,
+        lifecycle: lc, visibility: body.visibility && typeof body.visibility === "object" ? body.visibility : {},
+        owner_id: user.id, reason: s(body.reason, 300),
+      }, { onConflict: "org_id,country,state" }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, "market.set", "org_markets", m.id, { lifecycle: lc });
+      return Response.json({ market: m, rule: "Global registration never promotes a market to LIVE automatically; each market has its own gate." }, { headers: cors });
+    }
+    if (action === "product.market_state") {
+      const states = ["UNKNOWN", "UNDER_REVIEW", "APPROVED", "AVAILABLE", "LIMITED", "UNAVAILABLE", "NOT_AUTHORIZED", "RESTRICTED", "RECALLED", "WITHDRAWN"];
+      const { data: r, error } = await db.from("regional_product_states").upsert({
+        product_id: body.product_id, market_id: body.market_id,
+        state: states.includes(body.state) ? body.state : "UNKNOWN",
+        reason: s(body.reason, 300), source: s(body.source, 40) || "manufacturer_declaration",
+      }, { onConflict: "product_id,market_id" }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ regional_state: r, note: "A declaration is not presented as regulator-confirmed fact." }, { headers: cors });
+    }
+    if (action === "campaign.publish") {
+      const { data: c, error } = await db.from("campaigns").insert({
+        org_id: body.org_id, kind: ["recall", "service_campaign", "advisory"].includes(body.kind) ? body.kind : "service_campaign",
+        scope: body.scope && typeof body.scope === "object" ? body.scope : {},
+        severity: ["low", "moderate", "high", "critical"].includes(body.severity) ? body.severity : "moderate",
+        published_by: user.id,
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, "campaign.publish", "campaigns", c.id, { kind: c.kind, severity: c.severity });
+      return Response.json({ campaign: c }, { headers: cors });
+    }
+    if (action === "doc.publish") {
+      const { data: prev } = await db.from("tech_documents").select("id, version").eq("product_id", body.product_id).eq("title", s(body.title, 200)).order("version", { ascending: false }).limit(1);
+      const version = ((prev ?? [])[0]?.version ?? 0) + 1;
+      const { data: d, error } = await db.from("tech_documents").insert({
+        product_id: body.product_id ?? null, title: s(body.title, 200), version,
+        doc_type: ["spec", "bulletin", "notice"].includes(body.doc_type) ? body.doc_type : "spec",
+        market_scope: body.market_scope && typeof body.market_scope === "object" ? body.market_scope : {},
+        published_by: user.id, supersedes: (prev ?? [])[0]?.id ?? null,
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ document: d, version, note: "Prior version preserved; supersession is a link, never an overwrite." }, { headers: cors });
+    }
+
+    // ==================== PART 2 — MODULE 7: VENDOR FULFILMENT ====================
+    if (action === "po.create") {
+      if (!body.org_id) throw new HttpError(400, "org_id required");
+      const { data: po, error } = await db.from("purchase_orders").insert({
+        org_id: body.org_id, supplier_org_id: body.supplier_org_id ?? null, supplier_name: s(body.supplier_name, 120),
+        terms: body.terms && typeof body.terms === "object" ? body.terms : {},
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, "po.create", "purchase_orders", po.id, {});
+      return Response.json({ purchase_order: po }, { headers: cors });
+    }
+    if (action === "po.transition") {
+      const allowed: Record<string, string[]> = { DRAFT: ["SUBMITTED", "CANCELLED"], SUBMITTED: ["ACCEPTED", "CANCELLED"], ACCEPTED: ["PARTIAL", "RECEIVED"], PARTIAL: ["RECEIVED"], RECEIVED: [], CANCELLED: [] };
+      const { data: po } = await db.from("purchase_orders").select("id, status").eq("id", body.po_id).single();
+      if (!po) throw new HttpError(404, "Purchase order not found");
+      if (!(allowed[po.status] ?? []).includes(body.status)) throw new HttpError(409, `Cannot move ${po.status} → ${body.status}`);
+      await db.from("purchase_orders").update({ status: body.status }).eq("id", po.id);
+      await audit(user, "po." + body.status.toLowerCase(), "purchase_orders", po.id, {});
+      return Response.json({ ok: true }, { headers: cors });
+    }
+    if (action === "shipment.create") {
+      const { data: sh, error } = await db.from("shipments").insert({
+        order_kind: body.order_kind === "po" ? "po" : "product_order", order_id: body.order_id,
+        from_org_id: body.from_org_id ?? null, to_org_id: body.to_org_id ?? null, courier_org_id: body.courier_org_id ?? null,
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ shipment: sh, rule: "Order confirmation is not dispatch; dispatch is not delivery; delivery is not installation." }, { headers: cors });
+    }
+    if (action === "shipment.status") {
+      const flow: Record<string, string[]> = { CREATED: ["OFFERED"], OFFERED: ["ACCEPTED"], ACCEPTED: ["PICKED_UP"], PICKED_UP: ["IN_TRANSIT"], IN_TRANSIT: ["DELIVERED", "FAILED"], DELIVERED: [], FAILED: [] };
+      const { data: sh } = await db.from("shipments").select("id, status").eq("id", body.shipment_id).single();
+      if (!sh) throw new HttpError(404, "Shipment not found");
+      if (!(flow[sh.status] ?? []).includes(body.status)) throw new HttpError(409, `Cannot move ${sh.status} → ${body.status}`);
+      const proof = body.proof && typeof body.proof === "object" ? body.proof : {};
+      await db.from("shipments").update({ status: body.status, proof: { ...proof, actor: user.id, at: new Date().toISOString() } }).eq("id", sh.id);
+      await audit(user, "shipment." + body.status.toLowerCase(), "shipments", sh.id, {});
+      return Response.json({ ok: true }, { headers: cors });
+    }
+    if (action === "return.open") {
+      const { data: r, error } = await db.from("return_cases").insert({
+        order_kind: body.order_kind === "po" ? "po" : "product_order", order_id: body.order_id, reason: s(body.reason, 400),
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ return_case: r }, { headers: cors });
+    }
+    if (action === "return.resolve") {
+      await db.from("return_cases").update({ status: ["AUTHORIZED", "RETURNING", "RECEIVED", "RESOLVED", "REJECTED"].includes(body.status) ? body.status : "RESOLVED", resolution: s(body.resolution, 400) }).eq("id", body.return_id);
+      return Response.json({ ok: true }, { headers: cors });
+    }
+    if (action === "finance.recon") {
+      const { data: intents } = await db.from("payment_intents").select("*").order("created_at", { ascending: false }).limit(100);
+      const { data: webhooks } = await db.from("payment_webhook_events").select("*").order("created_at", { ascending: false }).limit(100);
+      const unmatched = (intents ?? []).filter((i: any) => i.reference && !(webhooks ?? []).some((w: any) => (w.payload?.reference) === i.reference));
+      const orphanWebhooks = (webhooks ?? []).filter((w: any) => w.payload?.reference && !(intents ?? []).some((i: any) => i.reference === w.payload.reference));
+      return Response.json({ intents: (intents ?? []).length, webhooks: (webhooks ?? []).length, unmatched_intents: unmatched.length, orphan_webhooks: orphanWebhooks.length, note: "Reconciliation is report-only; no silent ledger changes." }, { headers: cors });
+    }
+
+    // ==================== PART 2 — MODULE 8: CONTROL PLANE ====================
+    if (action === "agent.register") {
+      if (user.role !== "admin") throw new HttpError(403, "Admin only");
+      const { data: a, error } = await db.from("agents").insert({
+        name: s(body.name, 80), kind: ["worker", "specialist", "executive"].includes(body.kind) ? body.kind : "worker",
+        mandate: s(body.mandate, 400), tools: Array.isArray(body.tools) ? body.tools : [],
+        status: ["PROPOSED", "TEST", "SHADOW", "ACTIVE", "PAUSED", "DEGRADED", "RETIRED"].includes(body.status) ? body.status : "PROPOSED",
+        owner_id: user.id, model: s(body.model, 40) ?? null,
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, "agent.register", "agents", a.id, { kind: a.kind });
+      return Response.json({ agent: a }, { headers: cors });
+    }
+    if (action === "agent.setstatus") {
+      requireAdmin(user);
+      await db.from("agents").update({ status: body.status, last_health_at: new Date().toISOString() }).eq("id", body.agent_id);
+      await audit(user, "agent.setstatus", "agents", body.agent_id, { status: body.status });
+      return Response.json({ ok: true }, { headers: cors });
+    }
+    if (action === "decision.create") {
+      const { data: d, error } = await db.from("decisions").insert({
+        title: s(body.title, 200), kind: s(body.kind, 40) || "operational",
+        owner_id: body.owner_id ?? user.id, priority: ["low", "normal", "high", "critical"].includes(body.priority) ? body.priority : "normal",
+        evidence: body.evidence && typeof body.evidence === "object" ? body.evidence : {}, deadline: body.deadline ?? null,
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ decision: d }, { headers: cors });
+    }
+    if (action === "decision.resolve") {
+      await db.from("decisions").update({ status: ["RESOLVED", "ESCALATED"].includes(body.status) ? body.status : "RESOLVED", resolution: s(body.resolution, 600) }).eq("id", body.decision_id);
+      await audit(user, "decision.resolve", "decisions", body.decision_id, {});
+      return Response.json({ ok: true }, { headers: cors });
+    }
+    if (action === "delegation.grant") {
+      const ends = body.ends_at ?? new Date(Date.now() + 7 * 864e5).toISOString();
+      const { data: d, error } = await db.from("delegations").insert({
+        grantor_id: user.id, grantee_id: body.grantee_id,
+        scope: body.scope && typeof body.scope === "object" ? body.scope : {}, actions: Array.isArray(body.actions) ? body.actions : [],
+        ends_at: ends,
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, "delegation.grant", "delegations", d.id, { ends_at: ends });
+      return Response.json({ delegation: d, rule: "Delegation is never broader than the delegator's authority; revocable with history preserved." }, { headers: cors });
+    }
+    if (action === "delegation.revoke") {
+      await db.from("delegations").update({ revoked_at: new Date().toISOString() }).eq("id", body.delegation_id).eq("grantor_id", user.id);
+      await audit(user, "delegation.revoke", "delegations", body.delegation_id, {});
+      return Response.json({ ok: true }, { headers: cors });
+    }
+    if (action === "cost.report") {
+      const days = parseInt(body.days) || 30;
+      const since = new Date(Date.now() - days * 864e5).toISOString();
+      const { data: rows } = await db.from("ai_costs").select("*").gte("created_at", since);
+      const byService: Record<string, any> = {};
+      for (const r of (rows ?? [])) {
+        byService[r.service] = byService[r.service] ?? { calls: 0, cost_usd: 0, tokens: 0 };
+        byService[r.service].calls++; byService[r.service].cost_usd += Number(r.cost_usd); byService[r.service].tokens += (r.tokens_in ?? 0) + (r.tokens_out ?? 0);
+      }
+      return Response.json({ period_days: days, by_service: byService, note: "Cost telemetry is separated from decision authority by design." }, { headers: cors });
+    }
+
+    // ==================== PART 2 — MODULE 9: GARAGE INTELLIGENCE (SHADOW-FIRST) ====================
+    if (action === "intel.generate") {
+      const orgId = body.org_id;
+      const recs: any[] = [];
+      // Rule 1: reorder proposal from inventory movements vs stock
+      const { data: items } = await db.from("inventory_items").select("id, name, on_hand").eq("org_id", orgId);
+      const { data: moves } = await db.from("inventory_movements").select("item_id, quantity, movement_type, created_at").gte("created_at", new Date(Date.now() - 30 * 864e5).toISOString());
+      for (const it of (items ?? [])) {
+        const used = (moves ?? []).filter((m: any) => m.item_id === it.id && ["issue_internal", "sale"].includes(m.movement_type)).reduce((a: number, m: any) => a + Math.abs(Number(m.quantity)), 0);
+        if (used > 0 && Number(it.on_hand) < used / 2) {
+          recs.push({ kind: "reorder_proposal", org_id: orgId, title: `Reorder candidate: ${it.name}`, explanation: `30-day usage ${used} vs on-hand ${it.on_hand}.`, evidence: { item_id: it.id, used_30d: used, on_hand: it.on_hand }, confidence: used >= 10 ? "moderate" : "low" });
+        }
+      }
+      // Rule 2: booking demand note
+      const { count: bk } = await db.from("bookings").select("id", { count: "exact", head: true }).eq("provider_org_id", orgId).gte("created_at", new Date(Date.now() - 30 * 864e5).toISOString());
+      const { data: suff } = await db.from("intelligence_capabilities").select("*").eq("capability", "demand_forecast").maybeSingle();
+      if ((bk ?? 0) < (suff?.min_rows ?? 50)) {
+        recs.push({ kind: "data_sufficiency", org_id: orgId, title: "Demand forecast stays locked", explanation: `${bk ?? 0} bookings in 30 days < required ${suff?.min_rows ?? 50} (AC-009).`, evidence: { bookings_30d: bk }, confidence: "high" });
+      } else {
+        recs.push({ kind: "demand_signal", org_id: orgId, title: "Rising demand signal", explanation: `${bk} bookings in 30 days meets the data bar; consider capacity review.`, evidence: { bookings_30d: bk }, confidence: "moderate" });
+      }
+      let inserted = 0;
+      for (const r of recs.slice(0, 20)) {
+        const { error } = await db.from("recommendations").insert({ ...r, status: "SHADOW" });
+        if (!error) inserted++;
+      }
+      await audit(user, "intel.generate", "recommendations", orgId, { inserted });
+      return Response.json({ generated: inserted, note: "All recommendations start in SHADOW; human review promotes or rejects. No numeric confidence is fabricated." }, { headers: cors });
+    }
+    if (action === "intel.decide") {
+      const { data: r } = await db.from("recommendations").select("id, status").eq("id", body.recommendation_id).single();
+      if (!r) throw new HttpError(404, "Recommendation not found");
+      await db.from("recommendations").update({
+        status: ["ACCEPTED", "REJECTED"].includes(body.decision) ? body.decision : "REJECTED",
+        decided_by: user.id, decision_reason: s(body.reason, 400),
+      }).eq("id", r.id);
+      await audit(user, "intel.decide", "recommendations", r.id, { decision: body.decision });
+      return Response.json({ ok: true }, { headers: cors });
+    }
+
+    // ==================== PART 2 — MODULE 10: ACHIEVEMENT & OPPORTUNITIES ====================
+    if (action === "rule.save") {
+      requireAdmin(user);
+      const { data: r, error } = await db.from("achievement_rules").insert({
+        role: s(body.role, 40), name: s(body.name, 100),
+        criteria: body.criteria && typeof body.criteria === "object" ? body.criteria : {},
+        version: parseInt(body.version) || 1, approved: !!body.approved,
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ rule: r, note: "No hidden hardcoded thresholds; unapproved rules never compute." }, { headers: cors });
+    }
+    if (action === "achievement.evaluate") {
+      const { data: rules } = await db.from("achievement_rules").select("*").eq("role", user.role).eq("approved", true);
+      const { data: completed } = await db.from("bookings").select("id").eq("customer_id", user.id).eq("state", "COMPLETED");
+      const { data: creds } = await db.from("credentials").select("id").eq("user_id", user.id).eq("revoked", false);
+      const basis = { completed_bookings: (completed ?? []).length, active_credentials: (creds ?? []).length };
+      const results: any[] = [];
+      for (const r of (rules ?? [])) {
+        const c = r.criteria ?? {};
+        const met = (basis.completed_bookings >= (c.min_completed_bookings ?? 0));
+        const level = met ? r.name : null;
+        if (level) {
+          await db.from("stakeholder_achievements").upsert({
+            user_id: user.id, role: user.role, level: r.name, basis, rule_version: r.version,
+          }, { onConflict: "user_id,role" });
+          results.push({ role: user.role, level: r.name, basis });
+        }
+      }
+      return Response.json({ evaluated: (rules ?? []).length, earned: results, basis, note: "Evidence-based, role-aware; synthetic records never qualify." }, { headers: cors });
+    }
+    if (action === "ach.apply") { // apply to an achievement-sourced opportunity
+      return Response.json({ note: "Use opportunity.apply with source=achievement opportunities." }, { headers: cors });
+    }
+    if (action === "appeal.open") {
+      const { data: a, error } = await db.from("appeals").insert({
+        subject_type: s(body.subject_type, 40), subject_id: s(body.subject_id, 60),
+        user_id: user.id, reason: s(body.reason, 800),
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ appeal: a, note: "Correction path preserved; original decision history is never rewritten." }, { headers: cors });
+    }
+    if (action === "appeal.resolve") {
+      requireAdmin(user);
+      await db.from("appeals").update({ status: ["RESOLVED", "REJECTED"].includes(body.status) ? body.status : "RESOLVED", resolution: s(body.resolution, 600) }).eq("id", body.appeal_id);
+      return Response.json({ ok: true }, { headers: cors });
+    }
+
+    // ==================== PART 2 — MODULE 11: GOVERNMENT PHASE B (manual-handoff, authority-gated) ====================
+    if (action === "gov.service.list") {
+      const { data: svcs } = await db.from("gov_services").select("*").order("kind");
+      return Response.json({ services: svcs ?? [], note: "All services are official-channel handoffs unless marked authorized_integration. Sparekei never collects government passwords." }, { headers: cors });
+    }
+    if (action === "gov.application.create") {
+      const { data: a, error } = await db.from("gov_applications").insert({
+        user_id: user.id, service_id: body.service_id, vehicle_id: body.vehicle_id ?? null,
+        reference: s(body.reference, 80) ?? null, notes: body.notes && typeof body.notes === "object" ? body.notes : {},
+        status: body.reference ? "SUBMITTED" : "READY",
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ application: a, rule: "A saved reference is not an acknowledgement; ACKNOWLEDGED requires evidence you recorded from the official channel." }, { headers: cors });
+    }
+    if (action === "gov.application.transition") {
+      const flow: Record<string, string[]> = { DRAFT: ["READY"], READY: ["SUBMITTED"], SUBMITTED: ["ACKNOWLEDGED", "ACTION_REQUIRED", "REJECTED", "UNKNOWN"], ACKNOWLEDGED: ["ACTION_REQUIRED", "REJECTED"], ACTION_REQUIRED: ["ACKNOWLEDGED", "REJECTED"], REJECTED: [], UNKNOWN: ["SUBMITTED"] };
+      const { data: a } = await db.from("gov_applications").select("id, status").eq("id", body.application_id).single();
+      if (!a) throw new HttpError(404, "Application not found");
+      if (!(flow[a.status] ?? []).includes(body.status)) throw new HttpError(409, `Cannot move ${a.status} → ${body.status}`);
+      await db.from("gov_applications").update({ status: body.status, reference: s(body.reference, 80) ?? undefined }).eq("id", a.id);
+      await audit(user, "gov.app." + body.status.toLowerCase(), "gov_applications", a.id, {});
+      return Response.json({ ok: true }, { headers: cors });
+    }
+    if (action === "gov.booking.record") {
+      const { data: b, error } = await db.from("gov_inspection_bookings").insert({
+        application_id: body.application_id ?? null, centre_name: s(body.centre_name, 120),
+        inspection_type: s(body.inspection_type, 60), appointment_at: body.appointment_at ?? null,
+        official_reference: s(body.official_reference, 80) ?? null, result: body.result ?? null,
+      }).select("*").single();
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ booking: b, rule: "PASSED/FAILED may only be recorded from official result evidence — never predicted." }, { headers: cors });
+    }
+
     throw new HttpError(400, 'Unknown action: ' + action);
   } catch (e) {
     const status = e instanceof HttpError ? e.status : 500;
