@@ -20,6 +20,9 @@ export default function OwnerDashboard() {
 
   return (
     <div className="space-y-6">
+      <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2 text-center text-[11px] text-emerald-800">
+        Your live bookings, quotes, payments, passport & messages are on <a href="/my-activity" className="font-semibold underline">My Activity</a> — this overview below shows sample demo content while your garage grows
+      </div>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
