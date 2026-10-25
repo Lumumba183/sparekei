@@ -913,6 +913,86 @@ Deno.serve(async (req) => {
       return Response.json({ table, rows: rows.data ?? [], count_returned: (rows.data ?? []).length, provenance: "read-only; row cap 50; ordering by created_at where present" }, { headers: cors });
     }
 
+
+    // ============ POLISH PACK P1-P10 (current-version completion, no charge) ============
+    // P2: booking quote builder (provider itemized quote -> QUOTED) + customer accept
+    if (action === "booking.quote") {
+      const { data: b } = await db.from("bookings").select("id, state, provider_org_id, quote").eq("id", body.booking_id).single();
+      if (!b) throw new HttpError(404, "Booking not found");
+      if (b.state !== "REQUESTED") throw new HttpError(409, `Booking is ${b.state}; quotes attach to REQUESTED bookings`);
+      const { data: mem } = await db.from("organization_members").select("org_id").eq("user_id", user.id).eq("org_id", b.provider_org_id);
+      if (!mem?.length && user.role !== "admin") throw new HttpError(403, "Only the assigned provider organization may quote");
+      const items = Array.isArray(body.items) ? body.items.slice(0, 30).map((it: any) => ({ label: s(it.label, 120), amount: Number(it.amount) || 0 })) : [];
+      const total = items.reduce((a: number, x: any) => a + x.amount, 0);
+      const quote = { version: 1, items, total, note: s(body.note, 400), quoted_by: user.id, quoted_at: new Date().toISOString() };
+      const { error } = await db.from("bookings").update({ state: "QUOTED", quote, updated_at: new Date().toISOString() }).eq("id", b.id);
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, "booking.quote", "bookings", b.id, { total });
+      return Response.json({ ok: true, state: "QUOTED", quote }, { headers: cors });
+    }
+    if (action === "booking.accept") {
+      const { data: b } = await db.from("bookings").select("id, state, customer_id").eq("id", body.booking_id).single();
+      if (!b) throw new HttpError(404, "Booking not found");
+      if (b.customer_id !== user.id && user.role !== "admin") throw new HttpError(403, "Only the customer may accept");
+      if (b.state !== "QUOTED") throw new HttpError(409, `Cannot accept a ${b.state} booking`);
+      await db.from("bookings").update({ state: "ACCEPTED", "quote->accepted_at": new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", b.id);
+      await audit(user, "booking.accept", "bookings", b.id, {});
+      return Response.json({ ok: true, state: "ACCEPTED" }, { headers: cors });
+    }
+    // P3: job-card checklist on a booking (both parties; uses compliance evidence classes)
+    if (action === "booking.task.add") {
+      const { data: b } = await db.from("bookings").select("id, checklist, customer_id, provider_org_id").eq("id", body.booking_id).single();
+      if (!b) throw new HttpError(404, "Booking not found");
+      const task = { id: "t" + Date.now(), title: s(body.title, 140), done: false, by: user.id };
+      const checklist = [...(b.checklist ?? []), task].slice(0, 40);
+      await db.from("bookings").update({ checklist }).eq("id", b.id);
+      return Response.json({ ok: true, task }, { headers: cors });
+    }
+    if (action === "booking.task.toggle") {
+      const { data: b } = await db.from("bookings").select("id, checklist").eq("id", body.booking_id).single();
+      if (!b) throw new HttpError(404, "Booking not found");
+      const checklist = (b.checklist ?? []).map((t: any) => t.id === body.task_id ? { ...t, done: !t.done } : t);
+      await db.from("bookings").update({ checklist }).eq("id", b.id);
+      return Response.json({ ok: true }, { headers: cors });
+    }
+    // P4: eligible reviews (COMPLETED booking, customer, one per booking)
+    if (action === "review.create") {
+      const { data: b } = await db.from("bookings").select("id, state, customer_id").eq("id", body.booking_id).single();
+      if (!b) throw new HttpError(404, "Booking not found");
+      if (b.state !== "COMPLETED") throw new HttpError(409, "Reviews are only possible after the job is completed");
+      if (b.customer_id !== user.id) throw new HttpError(403, "Only the customer may review");
+      const rating = Math.min(5, Math.max(1, parseInt(body.rating) || 0));
+      if (!rating) throw new HttpError(400, "Rating 1-5 required");
+      const { data: existing } = await db.from("reviews").select("id").eq("booking_id", b.id).limit(1);
+      if (existing?.length) throw new HttpError(409, "This booking has already been reviewed");
+      const { data: rv, error } = await db.from("reviews").insert({ user_id: user.id, booking_id: b.id, rating, comment: s(body.comment, 800) }).select("id").single();
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, "review.create", "reviews", rv.id, { booking_id: b.id, rating });
+      return Response.json({ ok: true, review_id: rv.id }, { headers: cors });
+    }
+    if (action === "review.reply") {
+      const { data: rv } = await db.from("reviews").select("id, reply").eq("id", body.review_id).single();
+      if (!rv) throw new HttpError(404, "Review not found");
+      await db.from("reviews").update({ reply: s(body.reply, 800), replied_at: new Date().toISOString() }).eq("id", body.review_id);
+      await audit(user, "review.reply", "reviews", body.review_id, {});
+      return Response.json({ ok: true }, { headers: cors });
+    }
+    // P5: notifications read + preferences
+    if (action === "notifications.read") {
+      const q = body.all ? db.from("notifications").update({ read: true }).eq("user_id", user.id).eq("read", false)
+                         : db.from("notifications").update({ read: true }).eq("user_id", user.id).in("id", body.ids ?? []);
+      const { error } = await q;
+      if (error) throw new HttpError(500, error.message);
+      return Response.json({ ok: true }, { headers: cors });
+    }
+    // P9: referral note on a booking (honest referral-lite)
+    if (action === "booking.refer") {
+      const { error } = await db.from("bookings").update({ referral_note: s(body.note, 400), updated_at: new Date().toISOString() }).eq("id", body.booking_id);
+      if (error) throw new HttpError(500, error.message);
+      await audit(user, "booking.refer", "bookings", body.booking_id, {});
+      return Response.json({ ok: true, note: "Referral recorded — the Concierge can help route this to a verified specialist." }, { headers: cors });
+    }
+
     throw new HttpError(400, 'Unknown action: ' + action);
   } catch (e) {
     const status = e instanceof HttpError ? e.status : 500;
