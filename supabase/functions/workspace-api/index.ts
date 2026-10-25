@@ -195,7 +195,7 @@ Deno.serve(async (req) => {
     if (urlEarly.searchParams.get('action') === 'offers.browse') {
       const q0 = urlEarly.searchParams.get('q') ?? '';
       const { data: offers0 } = await supabaseAdmin().from('seller_offers')
-        .select('id, price, currency, quantity, moq, price_breaks, visibility, canonical_products(name, brand, category), organizations(name, country, markets)')
+        .select('id, price, currency, quantity, moq, price_breaks, visibility, created_at, canonical_products(name, brand, category), organizations(name, country, markets)')
         .eq('status', 'PUBLISHED').eq('visibility', 'public').order('created_at', { ascending: false }).limit(50);
       return Response.json({ offers: (offers0 ?? []).filter((o: any) => !q0 || JSON.stringify(o).toLowerCase().includes(q0.toLowerCase())), public: true }, { headers: cors });
     }
