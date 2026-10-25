@@ -31,7 +31,7 @@ export const PAGE_SOURCES: PageSource[] = [
   { path: '/academy', label: 'Academy', source: 'courses, question_banks, exam_attempts, credentials (live)', status: 'live' },
   { path: '/offers', label: 'Parts Offers', source: 'seller_offers via offers.browse (public, cap-aware)', status: 'live' },
   { path: '/my-activity', label: 'My Activity', source: 'bookings, payments, reviews, passport, notifications (live)', status: 'live' },
-  { path: '/admin/ops', label: 'Operations viewer', source: 'whitelisted read-only tables (live)', status: 'live' },
+  { path: '/admin/ops', label: 'Operations viewer', source: 'whitelisted read-only tables incl. Part-2 modules (live)', status: 'live' },
   { path: '/my-activity', label: 'My Activity (quotes, job cards, reviews)', source: 'bookings+quotes+checklists+reviews (live)', status: 'live' },
 ];
 
