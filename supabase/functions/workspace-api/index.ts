@@ -869,7 +869,7 @@ Deno.serve(async (req) => {
     // ============ TRACK 1: CROSS-DASHBOARD ACTIVITY (owner/mechanic/admin) ============
     if (action === "activity.mine") {
       const [{ data: asCustomer }, { data: memberships }, { data: payments }, { data: reviews }, { data: notifs }, { data: vehicles }] = await Promise.all([
-        db.from("bookings").select("id, state, scheduled_at, quote, created_at, vehicles(make, model, registration)").eq("customer_id", user.id).order("created_at", { ascending: false }).limit(25),
+        db.from("bookings").select("id, state, scheduled_at, quote, checklist, referral_note, created_at, vehicles(make, model, registration)").eq("customer_id", user.id).order("created_at", { ascending: false }).limit(25),
         db.from("organization_members").select("org_id, role").eq("user_id", user.id),
         db.from("payment_intents").select("id, amount, currency, state, reference, created_at").eq("customer_id", user.id).order("created_at", { ascending: false }).limit(25),
         db.from("reviews").select("id, rating, comment, created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(25),
@@ -880,7 +880,7 @@ Deno.serve(async (req) => {
       let providerBookings: any[] = [];
       if (orgIds.length) {
         const { data: pb } = await db.from("bookings")
-          .select("id, state, scheduled_at, quote, created_at, vehicles(make, model, registration)")
+          .select("id, state, scheduled_at, quote, checklist, referral_note, created_at, vehicles(make, model, registration)")
           .in("provider_org_id", orgIds).order("created_at", { ascending: false }).limit(25);
         providerBookings = pb ?? [];
       }
