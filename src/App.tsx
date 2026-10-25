@@ -11,6 +11,7 @@ import AcademyPage from '@/pages/AcademyPage';
 import OffersBrowsePage from '@/pages/OffersBrowsePage';
 import MyActivityPage from '@/pages/MyActivityPage';
 import AdminOpsPage from '@/pages/AdminOpsPage';
+import WorkspacesHubPage from '@/pages/WorkspacesHubPage';
 import AppLayout from '@/components/layout/AppLayout';
 
 // Public Pages
@@ -127,7 +128,8 @@ function AppRoutes() {
       <Route path="/payments" element={<ProtectedRoute><PaymentSandboxPage />
       <Route path="/academy" element={<ProtectedRoute><AcademyPage />
       <Route path="/offers" element={<OffersBrowsePage />
-      <Route path="/my-activity" element={<ProtectedRoute><MyActivityPage /></ProtectedRoute>} />
+      <Route path="/my-activity" element={<ProtectedRoute><MyActivityPage />
+      <Route path="/workspaces" element={<ProtectedRoute><WorkspacesHubPage /></ProtectedRoute>} /></ProtectedRoute>} />
       <Route path="/admin/ops" element={<ProtectedRoute allowedRoles={['admin']}><AdminOpsPage /></ProtectedRoute>} />} /></ProtectedRoute>} /></ProtectedRoute>} /></ProtectedRoute>} />
       <Route path="/cart" element={<ProtectedRoute><CartPage /></ProtectedRoute>} />
       <Route path="/rfq" element={<ProtectedRoute allowedRoles={['vendor', 'wholesaler', 'manufacturer']}><RFQPage /></ProtectedRoute>} />
