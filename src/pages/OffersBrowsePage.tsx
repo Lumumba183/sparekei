@@ -67,6 +67,9 @@ export default function OffersBrowsePage() {
             <p className="text-xs text-muted-foreground">
               {o.canonical_products?.brand && <>Brand: {o.canonical_products.brand} · </>}
               Supplier: {o.organizations?.name ?? '—'} ({o.organizations?.country})
+              {o.created_at && <> · <span className={new Date(o.created_at) < new Date(Date.now() - 7 * 864e5) ? 'text-amber-700' : ''}>
+                updated {new Date(o.created_at).toLocaleDateString()}{new Date(o.created_at) < new Date(Date.now() - 7 * 864e5) ? ' (stale)' : ''}
+              </span></>}
             </p>
             <div className="flex items-baseline gap-1.5">
               <span className="text-lg font-bold">{o.currency} {o.price.toLocaleString()}</span>
