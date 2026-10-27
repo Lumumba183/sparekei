@@ -206,7 +206,6 @@ const esc = (v: any) => `'${String(v ?? '').replace(/'/g, "''")}'`;
 // ==================== AI BRAIN — WORLD-CLASS AGENT (admin) ====================
 // Function-calling over whitelisted tables · visible reasoning trace · cost logging
 const BRAIN_TABLES = ['app_users','organizations','organization_members','provider_capabilities','canonical_products','seller_offers','bookings','inventory_items','inventory_movements','payment_intents','subscriptions','entitlement_grants','funnel_events','audit_events','gov_cases','concierge_conversations','courses','enrollments','credentials','founding_members','community_posts','reviews','vehicles','passport_stamps','service_orders','rfq_requests','question_banks','exam_attempts','recommendations','agents','decisions','ai_costs'];
-const esc = (v: any) => `'${String(v ?? '').replace(/'/g, "''")}'`;
 const brainRate = new Map<string, number[]>();
 
 Deno.serve(async (req) => {
@@ -214,10 +213,7 @@ Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') throw new HttpError(405, 'POST only');
     const rlKey = (req.headers.get('Authorization') ?? '').slice(-24) || 'anon';
-    const now0 = Date.now();
-    const arr = (brainRate.get(rlKey) ?? []).filter((t) => now0 - t < 60_000);
-    if (arr.length >= 15) throw new HttpError(429, 'Rate limit — please wait a minute (15/min for the reasoning engine).');
-    arr.push(now0); brainRate.set(rlKey, arr);
+    if (!(await rateGateDb(rlKey, 15, 300))) throw new HttpError(429, 'Rate limit — please wait a minute (15/min for the reasoning engine).');
 
     const admin = await requireAdmin(req);
     const body = await req.json();
