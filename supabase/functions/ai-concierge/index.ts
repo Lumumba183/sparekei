@@ -259,6 +259,26 @@ async function runTool(name: string, args: any, user: any, db: any) {
   }
 }
 
+
+// DB-backed rate limiting (in-memory maps do not survive edge isolates)
+async function rateGateDb(key: string, perMinute: number, perDay: number): Promise<boolean> {
+  try {
+    const kMin = esc(key) + '::min', kDay = esc(key) + '::day';
+    const rows = await mquery(`select key, count, window_start from public.rate_counters where key in (${kMin}, ${kDay})`);
+    const now = new Date();
+    const get = (k: string) => (rows ?? []).find((r: any) => r.key === k);
+    const minRow = get(key + '::min'), dayRow = get(key + '::day');
+    const minFresh = minRow && (now.getTime() - new Date(minRow.window_start).getTime()) < 60_000;
+    const dayFresh = dayRow && (now.getTime() - new Date(dayRow.window_start).getTime()) < 86_400_000;
+    if ((minFresh && minRow.count >= perMinute) || (dayFresh && dayRow.count >= perDay)) return false;
+    if (minFresh) await mquery(`update public.rate_counters set count = count + 1 where key = ${kMin}`);
+    else await mquery(`insert into public.rate_counters (key, window_start, count) values (${kMin}, now(), 1) on conflict (key) do update set window_start = now(), count = 1`);
+    if (dayFresh) await mquery(`update public.rate_counters set count = count + 1 where key = ${kDay}`);
+    else await mquery(`insert into public.rate_counters (key, window_start, count) values (${kDay}, now(), 1) on conflict (key) do update set window_start = now(), count = 1`);
+    return true;
+  } catch (e) { console.error('rate gate:', (e as Error).message); return true; }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   try {
