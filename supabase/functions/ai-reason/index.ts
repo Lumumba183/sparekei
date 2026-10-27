@@ -212,11 +212,11 @@ const brainRate = new Map<string, number[]>();
 // DB-backed rate limiting (in-memory maps do not survive edge isolates)
 async function rateGateDb(key: string, perMinute: number, perDay: number): Promise<boolean> {
   try {
-    const kMin = esc(key) + '::min', kDay = esc(key) + '::day';
+    const kMin = esc(key + '__m'), kDay = esc(key + '__d');
     const rows = await mquery(`select key, count, window_start from public.rate_counters where key in (${kMin}, ${kDay})`);
     const now = new Date();
     const get = (k: string) => (rows ?? []).find((r: any) => r.key === k);
-    const minRow = get(key + '::min'), dayRow = get(key + '::day');
+    const minRow = get(key + '__m'), dayRow = get(key + '__d');
     const minFresh = minRow && (now.getTime() - new Date(minRow.window_start).getTime()) < 60_000;
     const dayFresh = dayRow && (now.getTime() - new Date(dayRow.window_start).getTime()) < 86_400_000;
     if ((minFresh && minRow.count >= perMinute) || (dayFresh && dayRow.count >= perDay)) return false;
