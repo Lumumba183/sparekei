@@ -188,91 +188,103 @@ function estimateCost(model: string, tin: number, tout: number): number {
 // Legacy alias so old call sites compile unchanged
 const supabaseAdmin = () => restDb();
 
+
+// Privileged query path (service key is non-JWT; PostGREST rejects it — management API is the sanctioned route)
+const MREF = () => Deno.env.get('SUPABASE_URL')!.replace('https://', '').split('.')[0];
+async function mquery(sql: string): Promise<any[]> {
+  const res = await fetch(`https://api.supabase.com/v1/projects/${MREF()}/database/query`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${Deno.env.get('SB_ADMIN_TOKEN')}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: sql }),
+  });
+  const j = await res.json();
+  if (!res.ok) throw new Error(`mquery ${res.status}: ${JSON.stringify(j).slice(0, 150)}`);
+  return Array.isArray(j) ? j : [];
+}
+const esc = (v: any) => `'${String(v ?? '').replace(/'/g, "''")}'`;
+
+// ==================== AI BRAIN — WORLD-CLASS AGENT (admin) ====================
+// Function-calling over whitelisted tables · visible reasoning trace · cost logging
+const BRAIN_TABLES = ['app_users','organizations','organization_members','provider_capabilities','canonical_products','seller_offers','bookings','inventory_items','inventory_movements','payment_intents','subscriptions','entitlement_grants','funnel_events','audit_events','gov_cases','concierge_conversations','courses','enrollments','credentials','founding_members','community_posts','reviews','vehicles','passport_stamps','service_orders','rfq_requests','question_banks','exam_attempts','recommendations','agents','decisions','ai_costs'];
+const esc = (v: any) => `'${String(v ?? '').replace(/'/g, "''")}'`;
+const brainRate = new Map<string, number[]>();
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   try {
-    const { question } = await req.json();
-    if (!question || typeof question !== 'string') throw new HttpError(400, 'question is required');
+    if (req.method !== 'POST') throw new HttpError(405, 'POST only');
+    const rlKey = (req.headers.get('Authorization') ?? '').slice(-24) || 'anon';
+    const now0 = Date.now();
+    const arr = (brainRate.get(rlKey) ?? []).filter((t) => now0 - t < 60_000);
+    if (arr.length >= 15) throw new HttpError(429, 'Rate limit — please wait a minute (15/min for the reasoning engine).');
+    arr.push(now0); brainRate.set(rlKey, arr);
 
-    const { supabase, adminId, clerkToken } = await requireAdmin(req);
-    const started = Date.now();
+    const admin = await requireAdmin(req);
+    const body = await req.json();
+    const question: string = (body.question ?? '').toString().slice(0, 3000);
+    if (!question.trim()) throw new HttpError(400, 'question required');
 
-    const { data: conv } = await supabase.from('ai_conversations')
-      .insert({ admin_id: adminId, question, answer: '(thinking)' }).select('id').single();
-
-    const messages: { role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string; name?: string }[] = [
-      { role: 'user', content: question },
+    const TOOLS = [
+      { type: 'function', function: { name: 'list_tables', description: 'List the data tables the Brain can query.', parameters: { type: 'object', properties: {} } } },
+      { type: 'function', function: { name: 'query_table', description: 'Query one whitelisted table. filters are exact-match key/value pairs. Returns up to `limit` rows (max 25).', parameters: { type: 'object', properties: {
+        table: { type: 'string', enum: BRAIN_TABLES }, select: { type: 'string', description: 'comma-separated columns, default *' },
+        filters: { type: 'object', description: 'exact-match {column: value}' }, order_by: { type: 'string' }, order_desc: { type: 'boolean' },
+        limit: { type: 'integer' }, count_only: { type: 'boolean' } }, required: ['table'] } } },
     ];
-    const citations: { table: string; description: string; rows: number }[] = [];
-    const runs: { tool_name: string; tool_args: any; result_summary: string; row_count: number; latency_ms: number }[] = [];
-    let usage = { prompt_tokens: 0, completion_tokens: 0 };
-    let model = 'gpt-4.1';
+    async function runTool(name: string, args: any) {
+      if (name === 'list_tables') return BRAIN_TABLES;
+      if (name === 'query_table') {
+        const tbl = String(args.table ?? '');
+        if (!BRAIN_TABLES.includes(tbl)) return { error: `table '${tbl}' not whitelisted` };
+        const cols = /^[a-zA-Z0-9_,\s()*]+$/.test(String(args.select ?? '*')) ? String(args.select ?? '*') : '*';
+        let sql = `select ${cols === '*' ? '*' : cols} from public.${tbl}`;
+        const filters = args.filters && typeof args.filters === 'object' ? args.filters : {};
+        const conds = Object.entries(filters).filter(([k]) => /^[a-zA-Z0-9_]+$/.test(k)).map(([k, v]) => `${k} = ${esc(v)}`);
+        if (conds.length) sql += ` where ${conds.join(' and ')}`;
+        if (args.count_only) sql = `select count(*) as n from public.${tbl}${conds.length ? ` where ${conds.join(' and ')}` : ''}`;
+        if (args.order_by && /^[a-zA-Z0-9_]+$/.test(String(args.order_by))) sql += ` order by ${args.order_by} ${args.order_desc ? 'desc' : 'asc'}`;
+        sql += ` limit ${Math.min(25, Math.max(1, parseInt(args.limit) || 10))}`;
+        const rows = await mquery(sql);
+        return rows;
+      }
+      return { error: 'unknown tool' };
+    }
 
-    for (let i = 0; i < 6; i++) {
-      const t0 = Date.now();
-      const completion = await openaiChat({ model, system: SYSTEM, messages, tools: TOOLS });
-      usage = completion.usage ?? usage;
-      const choice = completion.choices[0];
-      const msg = choice.message;
+    const system = `You are the Sparekei AI Brain, the administrator's reasoning engine over the LIVE platform database.
+You answer by CALLING TOOLS — never from memory. Plan the minimal queries, inspect the returned rows, then answer with SPECIFIC numbers, names and dates drawn from the data.
+RULES: cite table names in your answer; if data is absent, say "no records"; never fabricate; numeric confidence is forbidden — state limitations in words; your final line must be "Sources:" followed by the tables queried.`;
 
-      if (msg.tool_calls?.length) {
-        messages.push({ role: 'assistant', content: msg.content ?? '', tool_calls: msg.tool_calls });
+    const messages: any[] = [{ role: 'user', content: question }];
+    const trace: any[] = [];
+    let answer = '', tin = 0, tout = 0;
+    for (let round = 0; round < 6; round++) {
+      let res: any; let lastErr: any;
+      for (let a = 0; a < 2; a++) {
+        try { res = await openaiChat({ model: 'gpt-4.1', system, messages, tools: TOOLS, maxTokens: 2000 }); break; }
+        catch (e) { lastErr = e; if (a === 0) await new Promise((r) => setTimeout(r, 1500)); }
+      }
+      if (!res) throw new HttpError(502, `The reasoning engine is temporarily unreachable — please retry shortly. (${(lastErr as Error)?.message?.slice(0, 80) ?? 'error'})`);
+      tin += res.usage?.prompt_tokens ?? 0; tout += res.usage?.completion_tokens ?? 0;
+      const msg = res.choices?.[0]?.message;
+      if (msg?.tool_calls?.length) {
         for (const call of msg.tool_calls) {
-          const fn = call.function;
-          let resultText = '';
-          let rowCount = 0;
-          try {
-            const args = JSON.parse(fn.arguments);
-            if (fn.name === 'query_table') {
-              const lim = Math.min(Number(args.limit) || 25, 100);
-              let q = supabase.from(args.table).select(args.select ?? '*').limit(lim);
-              if (args.eq && typeof args.eq === 'object') {
-                for (const [k, v] of Object.entries(args.eq)) q = q.eq(k, v as any);
-              }
-              const { data, error } = await q;
-              if (error) throw new Error(error.message);
-              rowCount = data?.length ?? 0;
-              resultText = JSON.stringify(data ?? []).slice(0, 6000);
-              citations.push({ table: args.table, description: `query_table(${args.table})`, rows: rowCount });
-            } else if (fn.name === 'search_knowledge') {
-              const emb = await openaiEmbed(args.query);
-              const { data, error } = await supabase.rpc('match_knowledge', {
-                query_embedding: emb, match_count: 5,
-              });
-              if (error) throw new Error(error.message);
-              rowCount = data?.length ?? 0;
-              resultText = JSON.stringify(data ?? []).slice(0, 4000);
-            }
-          } catch (e: any) {
-            resultText = `Tool error: ${e.message}`;
-          }
-          runs.push({
-            tool_name: fn.name, tool_args: JSON.parse(fn.arguments),
-            result_summary: resultText.slice(0, 500), row_count: rowCount,
-            latency_ms: Date.now() - t0,
-          });
-          messages.push({ role: 'tool', tool_call_id: call.id, name: fn.name, content: resultText });
+          let args: any = {}; try { args = JSON.parse(call.function?.arguments ?? '{}'); } catch { args = {}; }
+          const result = await runTool(call.function?.name ?? '', args);
+          trace.push({ tool: call.function?.name, args, rows: Array.isArray(result) ? result.length : 0 });
+          messages.push({ role: 'assistant', content: null, tool_calls: [call] });
+          messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result).slice(0, 8000) });
         }
         continue;
       }
-
-      // Final answer
-      const answer: string = msg.content ?? 'No answer produced.';
-      const latency = Date.now() - started;
-      await supabase.from('ai_conversations').update({
-        answer, citations, model,
-        tokens_in: usage.prompt_tokens, tokens_out: usage.completion_tokens,
-        cost_usd: estimateCost(model, usage.prompt_tokens, usage.completion_tokens),
-        latency_ms: latency,
-      }).eq('id', conv!.id);
-      for (const r of runs) {
-        await supabase.from('ai_tool_runs').insert({ conversation_id: conv!.id, ...r });
-      }
-      return Response.json({ answer, citations, conversation_id: conv!.id, tokens: usage, latency_ms: latency }, { headers: cors });
+      answer = msg?.content ?? ''; break;
     }
-    throw new HttpError(408, 'Reasoning loop exceeded 6 iterations.');
-  } catch (e: any) {
+    if (!answer) answer = 'I could not reach a conclusion with the available queries. Please refine the question.';
+    try {
+      await mquery(`insert into public.ai_costs (service, model, tokens_in, tokens_out, cost_usd, actor_id) values ('ai-brain', 'gpt-4.1', ${tin}, ${tout}, ${estimateCost('gpt-4.1', tin, tout)}, ${esc(admin.adminId)})`);
+    } catch (e) { console.error('brain cost log:', (e as Error).message); }
+    return Response.json({ answer, trace, tokens: { in: tin, out: tout }, provider: 'OpenAI GPT-4.1 via Sparekei AI Brain (agent mode)' }, { headers: cors });
+  } catch (e) {
     const status = e instanceof HttpError ? e.status : 500;
-    return Response.json({ error: e.message ?? 'Internal error' }, { status, headers: cors });
+    return new Response(JSON.stringify({ error: (e as Error).message }), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 });
