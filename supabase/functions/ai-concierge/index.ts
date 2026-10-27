@@ -266,7 +266,7 @@ Deno.serve(async (req) => {
 
     // Phase 0: rate limiting (per user token, falls back to IP)
     const rlKey = (req.headers.get('Authorization') ?? '').slice(-24) || req.headers.get('x-forwarded-for') || 'anon';
-    if (!rateGate(rlKey)) throw new HttpError(429, 'Rate limit reached — please wait a minute (20/min, 150/day).');
+    if (!(await rateGateDb(rlKey, 20, 150))) throw new HttpError(429, 'Rate limit reached — please wait a minute (20/min, 150/day).');
 
     const user = await requireUser(req);
     const db = restDb(user.token);
