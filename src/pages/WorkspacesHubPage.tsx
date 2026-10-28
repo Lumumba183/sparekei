@@ -33,8 +33,6 @@ export default function WorkspacesHubPage() {
   const [err, setErr] = useState<string | null>(null);
   const [svcClass, setSvcClass] = useState('mechanical');
   const [reqDesc, setReqDesc] = useState('');
-  const [ofItems, setOfItems] = useState<any[]>([]);
-  const [ofItem, setOfItem] = useState({ label: '', amount: '' });
   const [selReq, setSelReq] = useState<any>(null);
 
   const headers = async () => {
