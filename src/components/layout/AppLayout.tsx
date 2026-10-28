@@ -28,6 +28,8 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', roles: ['owner', 'mechanic', 'vendor', 'wholesaler', 'manufacturer', 'fleet_manager', 'service_node_operator', 'admin'] },
+  { label: 'My Activity', icon: Activity, path: '/my-activity', roles: ['owner', 'mechanic', 'service_node_operator', 'vendor', 'fleet_manager', 'admin'] },
+  { label: 'Workspaces', icon: LayoutGrid, path: '/workspaces', roles: ['owner', 'mechanic', 'service_node_operator', 'vendor', 'wholesaler', 'manufacturer', 'fleet_manager', 'admin'] },
   { label: 'Marketplace', icon: ShoppingCart, path: '/marketplace', roles: ['owner', 'mechanic', 'vendor', 'wholesaler', 'manufacturer', 'fleet_manager'] },
   { label: 'Symptom Search', icon: Search, path: '/symptom-search', roles: ['owner', 'mechanic', 'fleet_manager'] },
   { label: 'Cart', icon: ShoppingCart, path: '/cart', roles: ['owner', 'mechanic', 'vendor', 'wholesaler', 'manufacturer', 'fleet_manager'], badge: cartItems.length },
@@ -46,8 +48,6 @@ const navItems: NavItem[] = [
   { label: 'Provider Hub', icon: Building2, path: '/provider', roles: ['mechanic', 'service_node_operator', 'vendor', 'wholesaler', 'manufacturer', 'bodyshop', 'detailer', 'solo_workshop', 'admin'] },
   { label: 'Payment Sandbox', icon: CreditCard, path: '/payments', roles: ['owner', 'vendor', 'wholesaler', 'admin'] },
   { label: 'Academy', icon: GraduationCap, path: '/academy', roles: ['owner', 'mechanic', 'service_node_operator', 'vendor', 'wholesaler', 'manufacturer', 'fleet_manager', 'admin'] },
-  { label: 'My Activity', icon: Activity, path: '/my-activity', roles: ['owner', 'mechanic', 'service_node_operator', 'vendor', 'fleet_manager', 'admin'] },
-  { label: 'Workspaces', icon: LayoutGrid, path: '/workspaces', roles: ['owner', 'mechanic', 'service_node_operator', 'vendor', 'wholesaler', 'manufacturer', 'fleet_manager', 'admin'] },
   { label: 'Analytics', icon: BarChart3, path: '/analytics', roles: ['vendor', 'wholesaler', 'manufacturer', 'admin'] },
   { label: 'Users', icon: Users, path: '/users', roles: ['admin'] },
   { label: 'Cities', icon: MapPin, path: '/cities', roles: ['admin'] },
