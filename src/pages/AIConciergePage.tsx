@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Send, Bot, User, Sparkles, Wrench, Car, ShieldCheck, FileCheck2 } from 'lucide-react';
+import { Send, Bot, User, Sparkles, Wrench, Car, ShieldCheck, FileCheck2, FileText } from 'lucide-react';
 import { useSession } from '@clerk/clerk-react';
 import { Card } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
