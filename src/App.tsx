@@ -123,14 +123,14 @@ function AppRoutes() {
       <Route path="/alerts" element={<ProtectedRoute><PredictiveAlertsPage /></ProtectedRoute>} />
       <Route path="/ai-concierge" element={<ProtectedRoute><AIConciergePage /></ProtectedRoute>} />
       <Route path="/government/cases" element={<ProtectedRoute allowedRoles={['owner', 'fleet_manager', 'admin']}><GovernmentCasesPage /></ProtectedRoute>} />
-      <Route path="/government/cases/:id" element={<ProtectedRoute allowedRoles={['owner', 'fleet_manager', 'admin']}><GovernmentCaseDetailPage />
+      <Route path="/government/cases/:id" element={<ProtectedRoute allowedRoles={['owner', 'fleet_manager', 'admin']}><GovernmentCaseDetailPage /></ProtectedRoute>} />
       <Route path="/provider" element={<ProtectedRoute><ProviderHubPage /></ProtectedRoute>} />
-      <Route path="/payments" element={<ProtectedRoute><PaymentSandboxPage />
-      <Route path="/academy" element={<ProtectedRoute><AcademyPage />
-      <Route path="/offers" element={<OffersBrowsePage />
-      <Route path="/my-activity" element={<ProtectedRoute><MyActivityPage />
-      <Route path="/workspaces" element={<ProtectedRoute><WorkspacesHubPage /></ProtectedRoute>} /></ProtectedRoute>} />
-      <Route path="/admin/ops" element={<ProtectedRoute allowedRoles={['admin']}><AdminOpsPage /></ProtectedRoute>} />} /></ProtectedRoute>} /></ProtectedRoute>} /></ProtectedRoute>} />
+      <Route path="/payments" element={<ProtectedRoute><PaymentSandboxPage /></ProtectedRoute>} />
+      <Route path="/academy" element={<ProtectedRoute><AcademyPage /></ProtectedRoute>} />
+      <Route path="/offers" element={<OffersBrowsePage />} />
+      <Route path="/my-activity" element={<ProtectedRoute><MyActivityPage /></ProtectedRoute>} />
+      <Route path="/workspaces" element={<ProtectedRoute><WorkspacesHubPage /></ProtectedRoute>} />
+      <Route path="/admin/ops" element={<ProtectedRoute allowedRoles={['admin']}><AdminOpsPage /></ProtectedRoute>} />
       <Route path="/cart" element={<ProtectedRoute><CartPage /></ProtectedRoute>} />
       <Route path="/rfq" element={<ProtectedRoute allowedRoles={['vendor', 'wholesaler', 'manufacturer']}><RFQPage /></ProtectedRoute>} />
       <Route path="/symptom-search" element={<ProtectedRoute allowedRoles={['owner', 'mechanic', 'fleet_manager']}><SymptomSearchPage /></ProtectedRoute>} />
