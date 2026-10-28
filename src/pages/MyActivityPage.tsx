@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from '@clerk/clerk-react';
 import { Link } from 'react-router-dom';
-import { Activity, CalendarClock, CreditCard, Star, Bell, Stamp, Siren, ArrowLeft, Bot, FileText, CheckCircle2, Circle, Share2 } from 'lucide-react';
+import { Activity, CalendarClock, CreditCard, Star, Bell, Stamp, Siren, ArrowLeft, Bot, CheckCircle2, Circle, Share2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
