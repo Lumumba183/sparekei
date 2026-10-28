@@ -5,7 +5,6 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { getSupabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 
 interface ExamState { questions: { n: number; q: string; choices: string[] }[]; pass_mark: number; attempt_no: number; course_id: string; title: string; }
