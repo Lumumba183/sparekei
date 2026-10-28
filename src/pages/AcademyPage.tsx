@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { jres } from '@/lib/env';
 
 interface ExamState { questions: { n: number; q: string; choices: string[] }[]; pass_mark: number; attempt_no: number; course_id: string; title: string; }
 
@@ -41,7 +42,7 @@ export default function AcademyPage() {
 
   const post = async (action: string, body: any) => {
     const r = await fetch(fnUrl(action), { method: 'POST', headers: await headers() as any, body: JSON.stringify(body) });
-    const j = await r.json();
+    const j = await jres(r);
     if (!r.ok) { setError(j.error); return null; }
     setError(null); return j;
   };
