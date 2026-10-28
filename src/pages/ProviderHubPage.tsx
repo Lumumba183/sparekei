@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getSupabase } from '@/lib/supabase';
+import { jres } from '@/lib/env';
 import { cn } from '@/lib/utils';
 
 const CAP_STATUS: Record<string, string> = {
@@ -42,7 +43,7 @@ export default function ProviderHubPage() {
   const load = useCallback(async () => {
     try {
       const [h, t] = [await headers(), (await session?.getToken({ template: 'supabase' })) ?? null];
-      const r = await fetch(fnUrl('org.mine'), { headers: h as any }); const j = await r.json();
+      const r = await fetch(fnUrl('org.mine'), { headers: h as any }); const j = await jres(r);
       if (!r.ok) throw new Error(j.error);
       setData(j);
       const { data: prods } = await getSupabase(t).from('canonical_products').select('id, name, category').eq('status', 'ACTIVE').limit(50);
