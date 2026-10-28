@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
 interface Offer {
-  id: string; price: number; currency: string; quantity: number; moq: number;
+  id: string; price: number; currency: string; quantity: number; moq: number; created_at?: string;
   price_breaks: { min_qty: number; unit_price: number }[];
   canonical_products: { name: string; brand: string; category: string } | null;
   organizations: { name: string; country: string; markets: string[] } | null;
