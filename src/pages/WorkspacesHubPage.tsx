@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { jres } from '@/lib/env';
 
 const svc = (import.meta.env.VITE_SUPABASE_URL as string) + '/functions/v1/workspace-api';
 const SVC_CLASSES = ['mechanical','diagnostics','auto_electrical','body','paint','detailing','audio','security','tyres','glass','hvac','upholstery','exhaust','performance','ev_hybrid'];
@@ -42,7 +43,7 @@ export default function WorkspacesHubPage() {
   const load = useCallback(async () => {
     try {
       const r = await fetch(svc + '?action=hub.summary', { headers: await headers() as any });
-      const j = await r.json();
+      const j = await jres(r);
       if (!r.ok) throw new Error(j.error);
       setD(j);
     } catch (e: any) { setErr(e.message); }
