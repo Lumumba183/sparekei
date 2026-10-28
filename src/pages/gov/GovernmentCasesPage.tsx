@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getSupabase } from '@/lib/supabase';
+import { jres } from '@/lib/env';
 import { cn } from '@/lib/utils';
 
 interface GovCase { id: string; case_number: string; case_type: string; jurisdiction: string; status: string; is_test: boolean; updated_at: string; vehicles?: { make: string; model: string; registration: string | null } | null; }
@@ -36,8 +37,8 @@ export default function GovernmentCasesPage() {
       const token = (await session?.getToken({ template: 'supabase' })) ?? null;
       const h = { Authorization: `Bearer ${token}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string };
       const [t, c, v] = await Promise.all([
-        fetch(fnUrl('templates'), { headers: h }).then(r => r.json()),
-        fetch(fnUrl('list'), { headers: h }).then(r => r.json()),
+        fetch(fnUrl('templates'), { headers: h }).then(jres),
+        fetch(fnUrl('list'), { headers: h }).then(jres),
         getSupabase(token).from('vehicles').select('id, make, model, registration').then((r: any) => r.data ?? []),
       ]);
       setTemplates(t.templates ?? []); setCases(c.cases ?? []); setVehicles(v);
