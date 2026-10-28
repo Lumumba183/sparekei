@@ -15,7 +15,7 @@ const fadeInUp = {
 };
 
 const features = [
-  { icon: Car, title: 'Digital Vehicle Passport', desc: 'Your vehicle's living record — service history, compliance readiness and provenance you control.', color: 'from-blue-500 to-cyan-500' },
+  { icon: Car, title: 'Digital Vehicle Passport', desc: "Your vehicle's living record — service history, compliance readiness and provenance you control.", color: 'from-blue-500 to-cyan-500' },
   { icon: BrainCircuit, title: 'AI-Powered Intelligence', desc: 'AI reasoning over your live vehicle and platform data — diagnostics guidance, service intelligence and answers with sources.', color: 'from-purple-500 to-pink-500' },
   { icon: Siren, title: 'Emergency Dispatch', desc: 'Roadside help directory with verified provider contacts. In-app dispatch arrives with coverage and SLAs — we never fake an ETA.', color: 'from-red-500 to-orange-500' },
   { icon: ShoppingCart, title: 'Marketplace & Escrow', desc: 'Multi-seller marketplace for parts and services with versioned offers and transparent stock. Escrow activates only when a licensed provider is connected.', color: 'from-emerald-500 to-teal-500' },
