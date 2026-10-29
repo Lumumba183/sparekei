@@ -7,7 +7,7 @@ const ANON_KEY = () => Deno.env.get('SUPABASE_ANON_KEY')!;
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type',
+  'Access-Control-Allow-Headers': 'authorization, content-type, x-client-info, apikey',
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 };
 
