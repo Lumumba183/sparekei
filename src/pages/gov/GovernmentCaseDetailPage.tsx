@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/env';
 import { cn } from '@/lib/utils';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -35,10 +36,10 @@ export default function GovernmentCaseDetailPage() {
   const [evLabel, setEvLabel] = useState('');
   const [evNote, setEvNote] = useState('');
 
-  const fnUrl = (action: string) => `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gov-cases?action=${action}`;
+  const fnUrl = (action: string) => `${SUPABASE_URL}/functions/v1/gov-cases?action=${action}`;
   const headers = async () => {
     const token = (await session?.getToken({ template: 'supabase' })) ?? null;
-    return { Authorization: `Bearer ${token}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string, 'Content-Type': 'application/json' };
+    return { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' };
   };
 
   const load = useCallback(async () => {
