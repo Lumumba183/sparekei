@@ -8,9 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { jres } from '@/lib/env';
+import { jres, SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/env';
 
-const svc = (import.meta.env.VITE_SUPABASE_URL as string) + '/functions/v1/workspace-api';
+const svc = (SUPABASE_URL) + '/functions/v1/workspace-api';
 const SVC_CLASSES = ['mechanical','diagnostics','auto_electrical','body','paint','detailing','audio','security','tyres','glass','hvac','upholstery','exhaust','performance','ev_hybrid'];
 
 function Section({ title, children, defaultOpen = false }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
@@ -38,7 +38,7 @@ export default function WorkspacesHubPage() {
 
   const headers = async () => {
     const t = (await session?.getToken({ template: 'supabase' })) ?? null;
-    return { Authorization: `Bearer ${t}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string, 'Content-Type': 'application/json' };
+    return { Authorization: `Bearer ${t}`, apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' };
   };
   const load = useCallback(async () => {
     try {
