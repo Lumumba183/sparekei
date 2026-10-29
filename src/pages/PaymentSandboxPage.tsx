@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { getSupabase } from '@/lib/supabase';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/env';
 import { cn } from '@/lib/utils';
 
 const PAY_STATE: Record<string, string> = {
@@ -21,10 +22,10 @@ export default function PaymentSandboxPage() {
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const fnUrl = (a: string) => `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/workspace-api?action=${a}`;
+  const fnUrl = (a: string) => `${SUPABASE_URL}/functions/v1/workspace-api?action=${a}`;
   const headers = async () => {
     const t = (await session?.getToken({ template: 'supabase' })) ?? null;
-    return { Authorization: `Bearer ${t}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string, 'Content-Type': 'application/json' };
+    return { Authorization: `Bearer ${t}`, apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' };
   };
   const load = useCallback(async () => {
     try {
