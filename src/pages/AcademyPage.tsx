@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { jres } from '@/lib/env';
+import { jres, SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/env';
 
 interface ExamState { questions: { n: number; q: string; choices: string[] }[]; pass_mark: number; attempt_no: number; course_id: string; title: string; }
 
@@ -23,10 +23,10 @@ export default function AcademyPage() {
   const [appealText, setAppealText] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const fnUrl = (a: string) => `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/workspace-api?action=${a}`;
+  const fnUrl = (a: string) => `${SUPABASE_URL}/functions/v1/workspace-api?action=${a}`;
   const headers = async () => {
     const t = (await session?.getToken({ template: 'supabase' })) ?? null;
-    return { Authorization: `Bearer ${t}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string, 'Content-Type': 'application/json' };
+    return { Authorization: `Bearer ${t}`, apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' };
   };
   const load = useCallback(async () => {
     try {
