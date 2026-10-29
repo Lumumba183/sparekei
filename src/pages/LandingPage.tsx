@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState, useEffect } from 'react';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/env';
 import { cn } from '@/lib/utils';
 
 const fadeInUp = {
@@ -44,8 +45,8 @@ export default function LandingPage() {
 
   useEffect(() => {
     // B1/AC-015: public banner strip from the admin banner registry (optional, silent on failure)
-    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/workspace-api?action=banner.public`, {
-      headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string },
+    fetch(`${SUPABASE_URL}/functions/v1/workspace-api?action=banner.public`, {
+      headers: { apikey: SUPABASE_ANON_KEY },
     }).then(r => r.ok ? r.json() : null)
       .then(j => setBanners((j?.banners ?? []).slice(0, 1)))
       .catch(() => {});
