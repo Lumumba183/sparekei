@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/env';
 
 interface Offer {
   id: string; price: number; currency: string; quantity: number; moq: number; created_at?: string;
@@ -21,8 +22,8 @@ export default function OffersBrowsePage() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/workspace-api?action=offers.browse&q=${encodeURIComponent(q)}`, {
-      headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string },
+    fetch(`${SUPABASE_URL}/functions/v1/workspace-api?action=offers.browse&q=${encodeURIComponent(q)}`, {
+      headers: { apikey: SUPABASE_ANON_KEY },
     }).then(r => r.json()).then(j => { setOffers(j.offers ?? []); setLoading(false); })
       .catch(() => setLoading(false));
   }, [params]);
