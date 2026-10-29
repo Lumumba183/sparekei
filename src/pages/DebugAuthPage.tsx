@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useSession, useUser } from '@clerk/clerk-react';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/env';
 
 // Built to capture the EXACT auth failure. Run while logged in AND while logged out.
 export default function DebugAuthPage() {
@@ -43,8 +44,8 @@ export default function DebugAuthPage() {
     // Supabase with anon key only (no bearer)
     try {
       const resp = await fetch(
-        `${(import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL)}/rest/v1/service_nodes?select=id&limit=1`,
-        { headers: { apikey: (import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) as string } }
+        `${(SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL)}/rest/v1/service_nodes?select=id&limit=1`,
+        { headers: { apikey: (SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) as string } }
       );
       r.tests.supabaseAnon = { status: resp.status, body: (await resp.text()).slice(0, 200) };
     } catch (e: any) {
@@ -55,10 +56,10 @@ export default function DebugAuthPage() {
     if (token) {
       try {
         const resp = await fetch(
-          `${(import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL)}/rest/v1/service_nodes?select=id&limit=1`,
+          `${(SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL)}/rest/v1/service_nodes?select=id&limit=1`,
           {
             headers: {
-              apikey: (import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) as string,
+              apikey: (SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) as string,
               Authorization: `Bearer ${token}`,
             },
           }
@@ -93,11 +94,11 @@ export default function DebugAuthPage() {
     // Ping write probe: benign INSERT into open-policy table -> proves write-auth role
       try {
         const pr = await fetch(
-          (import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL) + '/rest/v1/ping',
+          (SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL) + '/rest/v1/ping',
           {
             method: 'POST',
             headers: {
-              apikey: (import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) as string,
+              apikey: (SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) as string,
               Authorization: `Bearer ${token}`,
               'Content-Type': 'application/json',
               Prefer: 'return=representation',
@@ -114,12 +115,12 @@ export default function DebugAuthPage() {
       try {
         const email = (user?.primaryEmailAddress?.emailAddress ?? 'unknown').toLowerCase();
         const resp = await fetch(
-          (import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL) +
+          (SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL) +
             '/rest/v1/app_users?on_conflict=email',
           {
             method: 'POST',
             headers: {
-              apikey: (import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) as string,
+              apikey: (SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) as string,
               Authorization: `Bearer ${token}`,
               'Content-Type': 'application/json',
               Prefer: 'resolution=merge-duplicates,return=representation',
