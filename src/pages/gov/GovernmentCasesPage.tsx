@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getSupabase } from '@/lib/supabase';
-import { jres } from '@/lib/env';
+import { jres, SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/env';
 import { cn } from '@/lib/utils';
 
 interface GovCase { id: string; case_number: string; case_type: string; jurisdiction: string; status: string; is_test: boolean; updated_at: string; vehicles?: { make: string; model: string; registration: string | null } | null; }
@@ -30,12 +30,12 @@ export default function GovernmentCasesPage() {
   const [error, setError] = useState<string | null>(null);
 
   // supabase-js invoke posts to function root; actions are read via query param — use fetch instead for GETs
-  const fnUrl = (action: string) => `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gov-cases?action=${action}`;
+  const fnUrl = (action: string) => `${SUPABASE_URL}/functions/v1/gov-cases?action=${action}`;
 
   const load = async () => {
     try {
       const token = (await session?.getToken({ template: 'supabase' })) ?? null;
-      const h = { Authorization: `Bearer ${token}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string };
+      const h = { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY };
       const [t, c, v] = await Promise.all([
         fetch(fnUrl('templates'), { headers: h }).then(jres),
         fetch(fnUrl('list'), { headers: h }).then(jres),
@@ -54,7 +54,7 @@ export default function GovernmentCasesPage() {
       const token = (await session?.getToken({ template: 'supabase' })) ?? null;
       const res = await fetch(fnUrl('create'), {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string, 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
         body: JSON.stringify({ case_type: caseType, jurisdiction: 'KE', vehicle_id: vehicleId === 'none' ? null : vehicleId }),
       });
       const json = await res.json();
